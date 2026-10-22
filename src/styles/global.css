@@ -62,6 +62,11 @@ h3 {
   margin: 0;
   font-weight: 600;
   letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
 }
 
 .wrap {
