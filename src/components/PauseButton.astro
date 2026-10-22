@@ -1,0 +1,14 @@
+---
+import Icon from './Icon.astro';
+
+interface Props {
+  videoId: string;
+}
+
+const { videoId } = Astro.props;
+---
+
+<button type="button" class="pause" data-pause-for={videoId} aria-label="Pausar video">
+  <span data-icon="pause"><Icon name="pause" /></span>
+  <span data-icon="play" hidden><Icon name="play-fill" /></span>
+</button>

@@ -2,95 +2,149 @@
 import { Image } from 'astro:assets';
 import type { CollectionEntry } from 'astro:content';
 import { formatArea, formatPrecio, url } from '../lib/format';
+import Icon from './Icon.astro';
 
 interface Props {
   lote: CollectionEntry<'lotes'>;
+  featured?: boolean;
 }
 
-const { lote } = Astro.props;
+const { lote, featured = false } = Astro.props;
 const d = lote.data;
+const conRecorrido = d.recorrido.some((c) => c.video);
 ---
 
-<a class="card" href={url(`lotes/${lote.id}/`)}>
-  <div class="media">
-    {
-      d.portada ? (
-        <Image src={d.portada} alt={d.nombre} widths={[480, 800]} sizes="(max-width: 720px) 100vw, 360px" />
-      ) : (
-        <div class="placeholder" aria-hidden="true" />
-      )
-    }
-    {d.recorrido.length > 0 && <span class="badge">Recorrido virtual</span>}
-    {d.demo && <span class="badge badge-demo">Demo</span>}
-  </div>
-  <div class="body">
+<a
+  class:list={['card', { featured }]}
+  href={url(`lotes/${lote.id}/`)}
+  data-lote
+  data-municipio={d.municipio}
+  data-area={d.area_m2}
+  data-precio={d.precio_cop}
+  data-recorrido={conRecorrido ? '1' : '0'}
+>
+  {
+    d.portada ? (
+      <div class="img">
+        <Image
+          src={d.portada}
+          alt={d.nombre}
+          widths={featured ? [800, 1400] : [480, 800]}
+          sizes={featured ? '(max-width: 1100px) 100vw, 820px' : '(max-width: 1100px) 50vw, 400px'}
+        />
+      </div>
+    ) : (
+      <div class="img noimg">
+        <Icon name="image" />
+        <span>Fotos de ejemplo</span>
+      </div>
+    )
+  }
+  <div class="meta">
     <h3>{d.nombre}</h3>
-    <p class="meta">{d.municipio} · {formatArea(d.area_m2)}</p>
-    <p class="price">
-      {formatPrecio(d.precio_cop)}
-      {d.estado !== 'disponible' && <span class="estado">{d.estado}</span>}
-    </p>
+    <span class="price">{formatPrecio(d.precio_cop)}</span>
+  </div>
+  <div class="sub">
+    <span>
+      {d.municipio} · {formatArea(d.area_m2)}{d.estado !== 'disponible' && <span class="estado"> · {d.estado}</span>}
+    </span>
+    {conRecorrido && <span class="tour"><Icon name="play-circle" />Recorrido en video</span>}
+    {d.demo && <span class="demo">Demo</span>}
   </div>
 </a>
 
 <style>
   .card {
-    display: block;
-    text-decoration: none;
+    display: flex;
+    flex-direction: column;
+  }
+  .card[hidden] {
+    display: none;
+  }
+  .img {
     border-radius: var(--radius);
-    background: var(--bg-soft);
     overflow: hidden;
-  }
-  .media {
-    position: relative;
     aspect-ratio: 4 / 3;
+    background: var(--surface);
   }
-  .media img,
-  .placeholder {
+  .img img {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    transition: transform 0.6s var(--ease);
   }
-  .placeholder {
-    background: linear-gradient(160deg, #cfe3c9 0%, #8fb98b 55%, #4f7f52 100%);
+  .card:hover .img img {
+    transform: scale(1.03);
   }
-  .badge {
+  .featured {
+    grid-column: span 2;
+    grid-row: span 2;
+  }
+  .featured .img {
+    position: relative;
+    aspect-ratio: auto;
+    flex: 1;
+    min-height: 360px;
+  }
+  .featured .img img {
     position: absolute;
-    top: 12px;
-    left: 12px;
-    padding: 4px 10px;
-    border-radius: 999px;
-    background: rgba(0, 0, 0, 0.6);
-    color: #fff;
-    font-size: 0.75rem;
-    font-weight: 500;
-  }
-  .badge-demo {
-    left: auto;
-    right: 12px;
-    background: rgba(255, 255, 255, 0.85);
-    color: #1d1d1f;
-  }
-  .body {
-    padding: 16px 18px 20px;
-  }
-  h3 {
-    margin: 0;
-    font-size: 1.125rem;
-    letter-spacing: -0.01em;
+    inset: 0;
+    object-position: center 60%;
   }
   .meta {
-    margin: 4px 0 0;
-    color: var(--text-soft);
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 16px;
+  }
+  h3 {
+    font-size: 1.1875rem;
   }
   .price {
-    margin: 10px 0 0;
-    font-weight: 600;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .sub {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 16px;
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 0.9375rem;
   }
   .estado {
-    margin-left: 8px;
-    color: var(--text-soft);
-    font-weight: 400;
     text-transform: capitalize;
+  }
+  .tour {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--accent);
+    font-weight: 500;
+  }
+  .demo {
+    padding: 1px 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-size: 0.8125rem;
+  }
+  @media (max-width: 1100px) {
+    .featured {
+      grid-row: auto;
+    }
+    .featured .img {
+      aspect-ratio: 16 / 9;
+      flex: none;
+      min-height: 0;
+    }
+    .featured .img img {
+      position: static;
+    }
+  }
+  @media (max-width: 600px) {
+    .featured {
+      grid-column: auto;
+    }
   }
 </style>

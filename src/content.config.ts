@@ -20,6 +20,8 @@ const lotes = defineCollection({
       demo: z.boolean().default(false),
       orden: z.number().default(100),
       atributos: z.array(z.string()).default([]),
+      // Cifras grandes de la ficha; si faltan se arman con área, explanación y precio
+      cifras: z.array(z.object({ valor: z.string(), etiqueta: z.string() })).max(4).optional(),
       cercanias: z
         .array(z.object({ lugar: z.string(), minutos: z.number().optional() }))
         .default([]),

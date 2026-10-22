@@ -1,4 +1,5 @@
 ---
+import Icon from '../components/Icon.astro';
 import { url } from '../lib/format';
 import '../styles/global.css';
 
@@ -22,14 +23,53 @@ const {
     <title>{title}</title>
   </head>
   <body>
-    <header class="site-header">
-      <a class="brand" href={url()}>Verdelote</a>
+    <header class="wrap site-nav">
+      <a class="brand" href={url()}><Icon name="mountains" />Verdelote</a>
+      <nav aria-label="Principal">
+        <a href={url()} aria-current={Astro.url.pathname === url('/') ? 'page' : undefined}>Lotes</a>
+      </nav>
     </header>
-    <main>
+    <slot name="localbar" />
+    <main class="wrap">
       <slot />
     </main>
-    <footer class="site-footer">
+    <footer class="wrap site-footer">
       <p>Verdelote · Prototipo</p>
     </footer>
   </body>
 </html>
+
+<style>
+  .site-nav {
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 1.125rem;
+    letter-spacing: -0.02em;
+  }
+  .brand :global(.icon) {
+    width: 1.35rem;
+    height: 1.35rem;
+    color: var(--accent);
+  }
+  nav a {
+    color: var(--muted);
+    font-size: 0.9375rem;
+  }
+  nav a[aria-current='page'] {
+    color: var(--text);
+  }
+  .site-footer {
+    padding-top: 48px;
+    padding-bottom: 48px;
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+</style>

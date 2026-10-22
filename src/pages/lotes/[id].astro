@@ -1,8 +1,10 @@
 ---
-import { Image } from 'astro:assets';
+import { getImage, Image } from 'astro:assets';
 import { getCollection, type CollectionEntry } from 'astro:content';
+import Icon, { type IconName } from '../../components/Icon.astro';
+import PauseButton from '../../components/PauseButton.astro';
 import Base from '../../layouts/Base.astro';
-import { formatArea, formatPrecio } from '../../lib/format';
+import { formatArea, formatPrecio, url } from '../../lib/format';
 
 export async function getStaticPaths() {
   const lotes = await getCollection('lotes');
@@ -21,80 +23,160 @@ const whatsappUrl = d.contacto
       `Hola ${d.contacto.nombre}, vi el ${d.nombre} en Verdelote y quiero agendar una visita`,
     )}`
   : undefined;
+
+// Capítulos del recorrido: arranca en el primero que tenga video
+const capitulos = await Promise.all(
+  d.recorrido.map(async (c) => ({
+    ...c,
+    posterUrl: (await getImage({ src: c.poster, width: 1600, format: 'webp' })).src,
+  })),
+);
+const inicial = Math.max(0, capitulos.findIndex((c) => c.video));
+
+const cifras = d.cifras ?? [
+  { valor: formatArea(d.area_m2), etiqueta: 'Área total' },
+  ...(d.explanacion_m2 ? [{ valor: formatArea(d.explanacion_m2), etiqueta: 'Explanados' }] : []),
+  { valor: formatPrecio(d.precio_cop), etiqueta: d.estado === 'disponible' ? 'Precio' : `Precio · ${d.estado}` },
+];
+
+const iconoAtributo = (texto: string): IconName => {
+  const t = texto.toLowerCase();
+  if (t.includes('escritur')) return 'scroll';
+  if (t.includes('explanaci')) return 'square-half-bottom';
+  if (t.includes('riego')) return 'plant';
+  if (t.includes('acueducto') || t.includes('agua')) return 'drop';
+  if (t.includes('carretera') || t.includes('vía') || t.includes('autopista')) return 'road-horizon';
+  if (t.includes('valoriz')) return 'trend-up';
+  return 'check-circle';
+};
+
+// Cercanías agrupadas por minutos, de la más cercana a la más lejana
+const grupos = [...Map.groupBy(d.cercanias, (c) => c.minutos ?? 0)]
+  .sort(([a], [b]) => a - b)
+  .map(([minutos, items]) => ({ minutos, lugares: items.map((i) => i.lugar) }));
+
+const galeriaVisible = d.galeria.slice(0, 5);
 ---
 
 <Base title={`${d.nombre} · Verdelote`} description={d.resumen}>
-  <section class="hero">
-    {d.demo && <p class="demo">Lote de demostración</p>}
+  <div class="localbar" slot="localbar">
+    <div class="wrap">
+      <a class="back" href={url()}><Icon name="caret-left" /><span>Lotes</span></a>
+      <span class="name">{d.nombre}</span>
+      <div class="right">
+        <span class="price">{formatPrecio(d.precio_cop)}</span>
+        {
+          whatsappUrl && (
+            <a class="btn btn-primary" href={whatsappUrl} target="_blank" rel="noopener">
+              <Icon name="whatsapp" />
+              Agendar visita
+            </a>
+          )
+        }
+      </div>
+    </div>
+  </div>
+
+  <section class="head">
+    {d.demo && <p class="demo">Lote de demostración, con datos de ejemplo</p>}
     <h1>{d.nombre}</h1>
-    <p class="tagline">{d.tagline}</p>
-    <p class="lugar">{lugar}</p>
+    <span class="tag">{d.tagline}</span>
+    <span class="loc"><Icon name="map-pin" />{lugar}</span>
   </section>
 
-  <section class="cifras" aria-label="Datos clave">
-    <div><strong>{formatArea(d.area_m2)}</strong><span>Área total</span></div>
-    {d.explanacion_m2 && <div><strong>{formatArea(d.explanacion_m2)}</strong><span>Explanados</span></div>}
-    <div><strong>{formatPrecio(d.precio_cop)}</strong><span class="estado">{d.estado}</span></div>
-  </section>
-
-  <p class="resumen">{d.resumen}</p>
-
-  {
-    d.recorrido.length > 0 && (
-      <section class="recorrido" aria-label="Recorrido">
-        <h2>Recorrido</h2>
-        {d.recorrido.map((c, i) => (
-          <article class="capitulo">
-            {c.video ? (
-              <video src={c.video} poster={c.poster.src} muted playsinline loop preload="metadata" />
+  <section aria-label="Recorrido" data-recorrido>
+    <div class="stage">
+      {
+        capitulos.length > 0 ? (
+          capitulos.map((c, i) =>
+            c.video ? (
+              <video
+                id={`cap-${i}`}
+                class="pane"
+                data-pane={i}
+                hidden={i !== inicial}
+                src={url(c.video)}
+                poster={c.posterUrl}
+                muted
+                loop
+                playsinline
+                autoplay={i === inicial}
+                preload={i === inicial ? 'auto' : 'none'}
+                aria-label={`Recorrido: ${c.titulo}`}
+              />
             ) : (
-              <Image src={c.poster} alt={c.titulo} widths={[640, 1200]} sizes="(max-width: 720px) 100vw, 1120px" />
-            )}
-            <div>
-              <span class="num">{String(i + 1).padStart(2, '0')}</span>
-              <h3>{c.titulo}</h3>
-              <p>{c.descripcion}</p>
-            </div>
-          </article>
-        ))}
-      </section>
-    )
-  }
+              <Image
+                class="pane"
+                data-pane={i}
+                hidden={i !== inicial}
+                src={c.poster}
+                alt={`${c.titulo}: ${c.descripcion}`}
+                widths={[800, 1600]}
+                sizes="(max-width: 1100px) 100vw, 1200px"
+              />
+            ),
+          )
+        ) : d.portada ? (
+          <Image class="pane" src={d.portada} alt={d.nombre} widths={[800, 1600]} sizes="(max-width: 1100px) 100vw, 1200px" />
+        ) : (
+          <div class="pane noimg">
+            <Icon name="image" />
+            <span>Fotos de ejemplo</span>
+          </div>
+        )
+      }
+      {capitulos.some((c) => c.video) && <PauseButton videoId={`cap-${inicial}`} />}
+    </div>
+
+    {
+      capitulos.length > 1 && (
+        <div class="chapters" role="tablist" aria-label="Capítulos del recorrido">
+          {capitulos.map((c, i) => (
+            <button
+              type="button"
+              class="chap"
+              role="tab"
+              aria-selected={i === inicial ? 'true' : 'false'}
+              aria-controls={c.video ? `cap-${i}` : undefined}
+              data-chap={i}
+            >
+              <img src={c.posterUrl} alt="" loading="lazy" />
+              <div>
+                <strong>{c.titulo}</strong>
+                <span>
+                  {c.video ? <Icon name="play-circle" /> : <Icon name="image" />}
+                  {c.video ? 'Video' : 'Foto'}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )
+    }
+  </section>
+
+  <section class="figures" aria-label="Datos clave">
+    {
+      cifras.map((c) => (
+        <div>
+          <strong>{c.valor}</strong>
+          <span>{c.etiqueta}</span>
+        </div>
+      ))
+    }
+  </section>
+  <p class="lead">{d.resumen}</p>
 
   {
     d.atributos.length > 0 && (
-      <section>
+      <section class="block">
         <h2>Lo que incluye</h2>
-        <ul class="lista">
-          {d.atributos.map((a) => <li>{a}</li>)}
-        </ul>
-      </section>
-    )
-  }
-
-  {
-    d.cercanias.length > 0 && (
-      <section>
-        <h2>Cerca de todo</h2>
-        <ul class="lista">
-          {d.cercanias.map((c) => (
-            <li>
-              {c.lugar}
-              {c.minutos && <span class="min">{c.minutos} min</span>}
-            </li>
-          ))}
-        </ul>
-      </section>
-    )
-  }
-
-  {
-    d.galeria.length > 0 && (
-      <section>
-        <h2>Galería</h2>
-        <div class="galeria">
-          {d.galeria.map((g) => (
-            <Image src={g.src} alt={g.alt} widths={[400, 800]} sizes="(max-width: 720px) 50vw, 360px" />
+        <div class="includes">
+          {d.atributos.map((a) => (
+            <div class="inc">
+              <Icon name={iconoAtributo(a)} />
+              <strong>{a}</strong>
+            </div>
           ))}
         </div>
       </section>
@@ -102,164 +184,611 @@ const whatsappUrl = d.contacto
   }
 
   {
-    d.ubicacion && (
-      <section>
-        <h2>Ubicación</h2>
-        <Image src={d.ubicacion.src} alt={d.ubicacion.alt} widths={[640, 1200]} sizes="(max-width: 720px) 100vw, 1120px" />
+    grupos.length > 0 && (
+      <section class="block">
+        <h2>Cerca de todo</h2>
+        <div class="near">
+          {grupos.map((g) => (
+            <div class:list={{ wide: g.lugares.length > 2 }}>
+              <span class="min">
+                {g.minutos}
+                <small>min</small>
+              </span>
+              <ul>
+                {g.lugares.map((l) => (
+                  <li>{l}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
       </section>
     )
   }
 
   {
-    whatsappUrl && (
-      <div class="cta">
-        <span class="cta-precio">{formatPrecio(d.precio_cop)}</span>
-        <a href={whatsappUrl} target="_blank" rel="noopener">
+    !d.demo && d.galeria.length > 0 && (
+      <section class="block">
+        <h2>Ubicación</h2>
+        <div class="map">
+          <Image src={d.galeria[Math.min(6, d.galeria.length - 1)].src} alt="" widths={[800, 1600]} sizes="100vw" />
+          <div class="over">
+            <strong>Vuelo 3D hasta el lote</strong>
+            <span>Disponible cuando tengamos el punto exacto en el mapa</span>
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  {
+    d.galeria.length > 0 && (
+      <section class="block">
+        <h2>Galería</h2>
+        <div class="gallery">
+          {galeriaVisible.map((g, i) => {
+            const masFotos = i === galeriaVisible.length - 1 && d.galeria.length > galeriaVisible.length;
+            return (
+              <button
+                type="button"
+                data-open={i}
+                aria-label={masFotos ? `Ver las ${d.galeria.length} fotos` : `Ampliar foto ${i + 1} de ${d.galeria.length}`}
+              >
+                <Image src={g.src} alt={g.alt} widths={[400, 900]} sizes={i === 0 ? '(max-width: 860px) 100vw, 620px' : '300px'} />
+                {masFotos && <span class="more">Ver las {d.galeria.length} fotos</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        <dialog class="lightbox" aria-label="Galería de fotos" data-lightbox>
+          <button type="button" class="lb-close" data-close aria-label="Cerrar galería">
+            <Icon name="x" />
+          </button>
+          <button type="button" class="lb-nav prev" data-prev aria-label="Foto anterior">
+            <Icon name="caret-left" />
+          </button>
+          {d.galeria.map((g, i) => (
+            <figure class="lb-item" data-item={i} hidden>
+              <Image src={g.src} alt={g.alt} widths={[900, 1600]} sizes="90vw" loading="lazy" />
+              <figcaption>
+                {g.alt}
+                <span>
+                  {i + 1} de {d.galeria.length}
+                </span>
+              </figcaption>
+            </figure>
+          ))}
+          <button type="button" class="lb-nav next" data-next aria-label="Foto siguiente">
+            <Icon name="caret-right" />
+          </button>
+        </dialog>
+      </section>
+    )
+  }
+
+  {
+    whatsappUrl && d.contacto && (
+      <section class="closing">
+        <div>
+          <h2>Conócelo en persona</h2>
+          <p>{d.contacto.nombre} responde por WhatsApp y te acompaña al lote</p>
+        </div>
+        <a class="btn btn-primary" href={whatsappUrl} target="_blank" rel="noopener">
+          <Icon name="whatsapp" />
           Agendar visita
         </a>
-      </div>
+      </section>
     )
   }
 </Base>
 
+<script>
+  import { initPauseButtons } from '../../lib/video-controls';
+
+  initPauseButtons();
+
+  // Capítulos: cambian el panel visible del visor y reproducen el video si lo hay
+  const root = document.querySelector<HTMLElement>('[data-recorrido]');
+  const pauseBtn = root?.querySelector<HTMLButtonElement>('[data-pause-for]');
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  root?.querySelectorAll<HTMLButtonElement>('[data-chap]').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const i = tab.dataset.chap;
+      root.querySelectorAll<HTMLElement>('[data-pane]').forEach((pane) => {
+        const activo = pane.dataset.pane === i;
+        pane.hidden = !activo;
+        if (pane instanceof HTMLVideoElement) {
+          if (activo && !reduce) pane.play();
+          else pane.pause();
+        }
+      });
+      root.querySelectorAll('[data-chap]').forEach((t) => t.setAttribute('aria-selected', String(t === tab)));
+      const video = root.querySelector<HTMLVideoElement>(`video[data-pane="${i}"]`);
+      if (pauseBtn) {
+        pauseBtn.hidden = !video;
+        if (video) pauseBtn.dataset.pauseFor = video.id;
+      }
+    });
+  });
+
+  // Galería ampliada con <dialog>: Esc cierra, flechas navegan
+  const dialog = document.querySelector<HTMLDialogElement>('[data-lightbox]');
+  if (dialog) {
+    const items = [...dialog.querySelectorAll<HTMLElement>('[data-item]')];
+    let actual = 0;
+    const mostrar = (i: number) => {
+      actual = (i + items.length) % items.length;
+      items.forEach((el, n) => (el.hidden = n !== actual));
+    };
+    document.querySelectorAll<HTMLButtonElement>('[data-open]').forEach((b) =>
+      b.addEventListener('click', () => {
+        mostrar(Number(b.dataset.open));
+        dialog.showModal();
+      }),
+    );
+    dialog.querySelector('[data-close]')!.addEventListener('click', () => dialog.close());
+    dialog.querySelector('[data-prev]')!.addEventListener('click', () => mostrar(actual - 1));
+    dialog.querySelector('[data-next]')!.addEventListener('click', () => mostrar(actual + 1));
+    dialog.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') mostrar(actual - 1);
+      if (e.key === 'ArrowRight') mostrar(actual + 1);
+    });
+    dialog.addEventListener('click', (e) => {
+      if (e.target === dialog) dialog.close();
+    });
+  }
+</script>
+
 <style>
-  .hero {
-    padding: 48px 0 24px;
+  .localbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+  }
+  .localbar .wrap {
+    height: 60px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+  .back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 0.9375rem;
+  }
+  .name {
+    font-weight: 600;
+    font-size: 1.0625rem;
+    letter-spacing: -0.015em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  .price {
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .localbar .btn {
+    height: 38px;
+    padding: 0 18px;
+    font-size: 0.875rem;
+  }
+
+  .head {
+    display: grid;
+    gap: 10px;
+    padding: 40px 0 28px;
   }
   .demo {
-    margin: 0 0 8px;
-    color: var(--text-soft);
+    margin: 0;
+    color: var(--muted);
     font-size: 0.875rem;
   }
   h1 {
-    margin: 0;
-    font-size: clamp(2.25rem, 7vw, 4rem);
+    font-size: clamp(2.5rem, 5vw, 4.25rem);
     line-height: 1.02;
-    letter-spacing: -0.035em;
   }
-  .tagline {
-    margin: 12px 0 0;
-    font-size: clamp(1.25rem, 3vw, 1.75rem);
-    letter-spacing: -0.015em;
+  .tag {
+    color: var(--muted);
+    font-size: 1.375rem;
+    letter-spacing: -0.01em;
   }
-  .lugar {
-    margin: 8px 0 0;
-    color: var(--text-soft);
+  .loc {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 0.9375rem;
   }
-  .cifras {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 16px;
-    padding: 24px 0;
-  }
-  .cifras div {
-    display: flex;
-    flex-direction: column;
-  }
-  .cifras strong {
-    font-size: 1.75rem;
-    letter-spacing: -0.02em;
-  }
-  .cifras span {
-    color: var(--text-soft);
-  }
-  .estado {
-    text-transform: capitalize;
-  }
-  .resumen {
-    max-width: 640px;
-    font-size: 1.25rem;
-  }
-  h2 {
-    margin: 64px 0 20px;
-    font-size: 1.75rem;
-    letter-spacing: -0.02em;
-  }
-  .capitulo {
-    margin-bottom: 40px;
-  }
-  .capitulo img,
-  .capitulo video {
+
+  .stage {
+    position: relative;
     width: 100%;
     aspect-ratio: 16 / 9;
+    max-height: 72vh;
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .stage :global(.pane) {
+    width: 100%;
+    height: 100%;
     object-fit: cover;
+  }
+  .stage :global(.pane[hidden]) {
+    display: none;
+  }
+  .stage :global(.pause[hidden]) {
+    display: none;
+  }
+  .chapters {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-top: 16px;
+  }
+  .chap {
+    display: grid;
+    grid-template-columns: 96px 1fr;
+    align-items: center;
+    gap: 14px;
+    min-height: 84px;
+    padding: 10px;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .chap img {
+    width: 96px;
+    height: 64px;
+    object-fit: cover;
+    border-radius: 10px;
+  }
+  .chap strong {
+    display: block;
+    font-weight: 500;
+  }
+  .chap span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--muted);
+    font-size: 0.8125rem;
+  }
+  .chap[aria-selected='true'] {
+    border-color: var(--line);
+    background: var(--surface);
+  }
+  .chap[aria-selected='true'] span {
+    color: var(--accent);
+  }
+
+  .figures {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+    padding: 72px 0 24px;
+  }
+  .figures div {
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+  }
+  .figures strong {
+    display: block;
+    font-size: 2.25rem;
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+  }
+  .figures span {
+    color: var(--muted);
+    text-transform: none;
+  }
+  .lead {
+    max-width: 34ch;
+    margin: 0;
+    padding-top: 32px;
+    font-size: 1.5rem;
+    line-height: 1.4;
+    letter-spacing: -0.015em;
+  }
+
+  .block {
+    padding-top: 104px;
+  }
+  .block > h2 {
+    margin-bottom: 28px;
+    font-size: 2rem;
+  }
+
+  .includes {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+  .inc {
+    display: grid;
+    gap: 14px;
+    padding: 24px;
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+  .inc :global(.icon) {
+    width: 1.75rem;
+    height: 1.75rem;
+    color: var(--accent);
+  }
+  .inc strong {
+    font-weight: 500;
+    font-size: 1.0625rem;
+  }
+
+  .near {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  .near > div {
+    padding: 28px;
+    border: 1px solid var(--line);
     border-radius: var(--radius);
   }
-  .capitulo h3 {
-    margin: 12px 0 0;
-    font-size: 1.25rem;
-  }
-  .capitulo p {
-    margin: 4px 0 0;
-    color: var(--text-soft);
-  }
-  .num {
-    display: block;
-    margin-top: 16px;
-    color: var(--accent);
-    font-weight: 600;
-    font-size: 0.875rem;
-  }
-  .lista {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: 12px;
-  }
-  .lista li {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 16px 18px;
-    border-radius: 14px;
-    background: var(--bg-soft);
+  .near > .wide {
+    grid-column: span 2;
   }
   .min {
-    color: var(--text-soft);
-    white-space: nowrap;
+    font-size: 3rem;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.04em;
   }
-  .galeria {
+  .min small {
+    margin-left: 4px;
+    color: var(--muted);
+    font-size: 1rem;
+    font-weight: 500;
+    letter-spacing: 0;
+  }
+  .near ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 18px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .near li {
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: var(--surface);
+    font-size: 0.9375rem;
+  }
+
+  .map {
+    position: relative;
+    aspect-ratio: 21 / 9;
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .map :global(img) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: saturate(0.6) brightness(0.55);
+  }
+  .over {
+    position: absolute;
+    inset: 0;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    align-content: end;
+    gap: 6px;
+    padding: 36px;
+    color: #fff;
+  }
+  .over strong {
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .over span {
+    opacity: 0.85;
+  }
+
+  .gallery {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    grid-template-rows: 240px 240px;
     gap: 12px;
   }
-  .galeria img {
-    width: 100%;
-    aspect-ratio: 3 / 4;
-    object-fit: cover;
-    border-radius: 14px;
-  }
-  section > img {
+  .gallery button {
+    position: relative;
+    padding: 0;
+    border: 0;
     border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--surface);
+    cursor: zoom-in;
   }
-  .cta {
-    position: sticky;
-    bottom: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    max-width: 480px;
-    margin: 48px auto 0;
-    padding: 10px 10px 10px 20px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--bg-soft) 85%, transparent);
-    backdrop-filter: saturate(180%) blur(20px);
-    -webkit-backdrop-filter: saturate(180%) blur(20px);
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  .gallery button:first-child {
+    grid-row: span 2;
   }
-  .cta-precio {
-    font-weight: 600;
+  .gallery :global(img) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
-  .cta a {
-    padding: 12px 22px;
-    border-radius: 999px;
-    background: var(--accent);
+  .more {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgb(15 17 18 / 0.55);
     color: #fff;
-    font-weight: 600;
-    text-decoration: none;
-    white-space: nowrap;
+    font-weight: 500;
+    font-size: 1.0625rem;
+  }
+
+  .lightbox {
+    width: 100vw;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: rgb(12 13 14 / 0.94);
+    color: #fff;
+  }
+  .lightbox[open] {
+    display: grid;
+    grid-template-columns: 72px 1fr 72px;
+    align-items: center;
+  }
+  .lightbox::backdrop {
+    background: transparent;
+  }
+  .lb-item {
+    grid-column: 2;
+    grid-row: 1;
+    margin: 0;
+    display: grid;
+    justify-items: center;
+    gap: 14px;
+  }
+  .lb-item[hidden] {
+    display: none;
+  }
+  .lb-item :global(img) {
+    max-height: 80dvh;
+    width: auto;
+    border-radius: 12px;
+  }
+  .lb-item figcaption {
+    display: flex;
+    gap: 16px;
+    color: rgb(255 255 255 / 0.8);
+    font-size: 0.9375rem;
+  }
+  .lb-nav,
+  .lb-close {
+    width: 48px;
+    height: 48px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgb(255 255 255 / 0.2);
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.08);
+    color: #fff;
+    cursor: pointer;
+  }
+  .lb-nav {
+    justify-self: center;
+  }
+  .prev {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .next {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .lb-close {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+  }
+
+  .closing {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: end;
+    gap: 32px;
+    margin-top: 120px;
+    padding: 72px 0 48px;
+    border-top: 1px solid var(--line);
+  }
+  .closing h2 {
+    font-size: clamp(2rem, 3.6vw, 3rem);
+    line-height: 1.05;
+  }
+  .closing p {
+    margin: 12px 0 0;
+    color: var(--muted);
+    font-size: 1.125rem;
+  }
+  .closing .btn {
+    height: 52px;
+    padding: 0 28px;
+    font-size: 1rem;
+  }
+
+  @media (max-width: 1100px) {
+    .chapters {
+      grid-template-columns: repeat(4, 220px);
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      padding-bottom: 6px;
+    }
+    .chap {
+      scroll-snap-align: start;
+    }
+    .figures {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .includes {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .near {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .gallery {
+      grid-template-rows: 200px 200px;
+    }
+  }
+  @media (max-width: 860px) {
+    .back span,
+    .localbar .price {
+      display: none;
+    }
+    .gallery {
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 260px 180px 180px;
+    }
+    .gallery button:first-child {
+      grid-column: span 2;
+      grid-row: auto;
+    }
+    .closing {
+      grid-template-columns: 1fr;
+    }
+    .map {
+      aspect-ratio: 16 / 9;
+    }
+  }
+  @media (max-width: 600px) {
+    .includes,
+    .near {
+      grid-template-columns: 1fr;
+    }
+    .near > .wide {
+      grid-column: auto;
+    }
   }
 </style>

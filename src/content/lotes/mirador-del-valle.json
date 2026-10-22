@@ -1,7 +1,7 @@
 {
   "nombre": "Lote Mirador del Valle",
   "tagline": "3.800 m² de montaña, listos para construir",
-  "resumen": "Explanación hecha, escrituras al día y una vista que se abre sobre el valle. A 15 minutos del parque de Girardota",
+  "resumen": "Explanación hecha, escrituras al día y una vista que se abre sobre el valle",
   "municipio": "Girardota",
   "departamento": "Antioquia",
   "vereda": "Vereda Mercedes Ábrego",
@@ -19,6 +19,24 @@
     "Acueducto veredal",
     "Carretera en buen estado hasta el lote",
     "Zona de alta valorización"
+  ],
+  "cifras": [
+    {
+      "valor": "3.800 m²",
+      "etiqueta": "Área total"
+    },
+    {
+      "valor": "1.000 m²",
+      "etiqueta": "Ya explanados"
+    },
+    {
+      "valor": "15 min",
+      "etiqueta": "Al parque de Girardota"
+    },
+    {
+      "valor": "100%",
+      "etiqueta": "Escriturado"
+    }
   ],
   "cercanias": [
     {
@@ -99,7 +117,8 @@
     {
       "titulo": "La vista",
       "descripcion": "Montaña al frente y el valle abierto a tus pies",
-      "poster": "../../assets/lotes/mirador-del-valle/explanacion-vista.jpg"
+      "poster": "../../assets/lotes/mirador-del-valle/la-vista-poster.jpg",
+      "video": "lotes/mirador-del-valle/la-vista.mp4"
     },
     {
       "titulo": "Desde el aire",

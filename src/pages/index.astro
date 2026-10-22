@@ -1,40 +1,325 @@
 ---
+import { getImage } from 'astro:assets';
 import { getCollection } from 'astro:content';
+import Icon from '../components/Icon.astro';
 import LoteCard from '../components/LoteCard.astro';
+import PauseButton from '../components/PauseButton.astro';
 import Base from '../layouts/Base.astro';
+import { formatArea, url } from '../lib/format';
 
 const lotes = (await getCollection('lotes')).sort((a, b) => a.data.orden - b.data.orden);
+const destacado = lotes.find((l) => l.data.destacado);
+const resto = lotes.filter((l) => l !== destacado);
+const clip = destacado?.data.recorrido.find((c) => c.video);
+const poster = clip ? await getImage({ src: clip.poster, width: 1600, format: 'webp' }) : undefined;
+const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) => a.localeCompare(b, 'es'));
 ---
 
 <Base>
-  <section class="intro">
-    <h1>Camina el lote antes de visitarlo</h1>
-    <p>Lotes en Antioquia con recorrido virtual</p>
+  <section class="hero">
+    <div class="hero-copy">
+      <h1>Camina el lote antes de visitarlo</h1>
+      <p>Lotes en Antioquia con recorrido en video, datos claros y contacto directo con el dueño</p>
+      <div class="actions">
+        {
+          destacado && (
+            <a class="btn btn-primary" href={url(`lotes/${destacado.id}/`)}>
+              <Icon name="play" />
+              Ver recorrido
+            </a>
+          )
+        }
+        <a class="btn btn-ghost" href="#lotes">Explorar lotes</a>
+      </div>
+    </div>
+    {
+      destacado && clip && poster && (
+        <figure>
+          <div class="stage">
+            <video id="hero-video" src={url(clip.video)} poster={poster.src} autoplay muted loop playsinline />
+            <PauseButton videoId="hero-video" />
+          </div>
+          <figcaption>
+            <strong>{destacado.data.nombre}</strong>
+            <span class="muted">
+              {destacado.data.municipio} · {formatArea(destacado.data.area_m2)}
+            </span>
+          </figcaption>
+        </figure>
+      )
+    }
   </section>
 
-  <section class="grid" aria-label="Lotes">
-    {lotes.map((lote) => <LoteCard lote={lote} />)}
+  <section id="lotes" aria-label="Lotes disponibles">
+    <form class="toolbar" aria-label="Filtrar lotes" data-filtros>
+      <div class="field">
+        <label for="f-municipio">Municipio</label>
+        <select id="f-municipio" name="municipio">
+          <option value="">Todos</option>
+          {municipios.map((m) => <option value={m}>{m}</option>)}
+        </select>
+      </div>
+      <div class="field">
+        <label for="f-area">Área</label>
+        <select id="f-area" name="area">
+          <option value="">Cualquier área</option>
+          <option value="0-2500">Hasta 2.500 m²</option>
+          <option value="2500-5000">2.500 a 5.000 m²</option>
+          <option value="5000-">Más de 5.000 m²</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="f-precio">Precio máximo</label>
+        <select id="f-precio" name="precio">
+          <option value="">Sin límite</option>
+          <option value="200000000">$200.000.000</option>
+          <option value="300000000">$300.000.000</option>
+          <option value="400000000">$400.000.000</option>
+        </select>
+      </div>
+      <label class="switch">
+        <input type="checkbox" name="recorrido" />
+        <span class="knob" aria-hidden="true"></span>
+        Solo con recorrido
+      </label>
+      <output class="count" aria-live="polite" data-count>{lotes.length} lotes</output>
+    </form>
+
+    <div class="grid">
+      {destacado && <LoteCard lote={destacado} featured />}
+      {resto.map((lote) => <LoteCard lote={lote} />)}
+    </div>
+
+    <div class="empty" hidden data-empty>
+      <p>Ningún lote coincide con estos filtros</p>
+      <button type="button" class="btn btn-ghost" data-reset>Quitar filtros</button>
+    </div>
   </section>
 </Base>
 
+<script>
+  import { initPauseButtons } from '../lib/video-controls';
+
+  initPauseButtons();
+
+  const form = document.querySelector<HTMLFormElement>('[data-filtros]')!;
+  const cards = [...document.querySelectorAll<HTMLElement>('[data-lote]')];
+  const count = document.querySelector<HTMLOutputElement>('[data-count]')!;
+  const empty = document.querySelector<HTMLElement>('[data-empty]')!;
+
+  function aplicar() {
+    const f = new FormData(form);
+    const municipio = String(f.get('municipio') ?? '');
+    const [areaMin, areaMax] = String(f.get('area') ?? '').split('-').map((v) => (v ? Number(v) : undefined));
+    const precioMax = Number(f.get('precio')) || Infinity;
+    const soloRecorrido = f.get('recorrido') === 'on';
+    let visibles = 0;
+    for (const card of cards) {
+      const area = Number(card.dataset.area);
+      const ok =
+        (!municipio || card.dataset.municipio === municipio) &&
+        (areaMin === undefined || area >= areaMin) &&
+        (areaMax === undefined || area < areaMax) &&
+        Number(card.dataset.precio) <= precioMax &&
+        (!soloRecorrido || card.dataset.recorrido === '1');
+      card.hidden = !ok;
+      if (ok) visibles++;
+    }
+    count.value = visibles === 1 ? '1 lote' : `${visibles} lotes`;
+    empty.hidden = visibles > 0;
+  }
+
+  form.addEventListener('change', aplicar);
+  document.querySelector('[data-reset]')!.addEventListener('click', () => {
+    form.reset();
+    aplicar();
+  });
+</script>
+
 <style>
-  .intro {
-    padding: 48px 0 32px;
+  .hero {
+    display: grid;
+    grid-template-columns: 1fr 1.3fr;
+    gap: 56px;
+    align-items: center;
+    padding: 40px 0 72px;
   }
   h1 {
+    font-size: clamp(2.5rem, 4vw, 3.5rem);
+    line-height: 1.04;
+  }
+  .hero-copy p {
+    max-width: 30ch;
+    margin: 20px 0 32px;
+    color: var(--muted);
+    font-size: 1.1875rem;
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  figure {
     margin: 0;
-    font-size: clamp(2rem, 6vw, 3.5rem);
-    line-height: 1.05;
-    letter-spacing: -0.03em;
   }
-  .intro p {
-    margin: 12px 0 0;
-    color: var(--text-soft);
-    font-size: 1.25rem;
+  .stage {
+    position: relative;
+    aspect-ratio: 16 / 10;
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--surface);
   }
+  .stage video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  figcaption {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 14px;
+    font-size: 0.9375rem;
+  }
+  figcaption strong {
+    font-weight: 500;
+  }
+
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 16px;
+    padding: 24px 0 32px;
+    border-top: 1px solid var(--line);
+  }
+  .field {
+    display: grid;
+    gap: 6px;
+  }
+  .field label {
+    color: var(--muted);
+    font-size: 0.8125rem;
+  }
+  select {
+    height: 44px;
+    min-width: 190px;
+    padding: 0 14px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.9375rem;
+  }
+  .switch {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 44px;
+    padding: 0 16px;
+    border-radius: 999px;
+    background: var(--surface);
+    font-size: 0.9375rem;
+    cursor: pointer;
+  }
+  .switch input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .knob {
+    position: relative;
+    width: 36px;
+    height: 22px;
+    border-radius: 999px;
+    background: var(--line);
+    transition: background 0.2s;
+  }
+  .knob::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 2px rgb(22 24 26 / 0.2);
+    transition: transform 0.2s var(--ease);
+  }
+  .switch input:checked + .knob {
+    background: var(--accent);
+  }
+  .switch input:checked + .knob::after {
+    transform: translateX(14px);
+  }
+  .switch:has(input:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+  }
+  .count {
+    margin-left: auto;
+    align-self: center;
+    color: var(--muted);
+    font-size: 0.9375rem;
+  }
+
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 20px;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 40px 28px;
+    padding-bottom: 64px;
+  }
+  .empty {
+    display: grid;
+    justify-items: start;
+    gap: 16px;
+    padding: 48px 0 96px;
+    color: var(--muted);
+    font-size: 1.125rem;
+  }
+  .empty[hidden] {
+    display: none;
+  }
+  .empty p {
+    margin: 0;
+  }
+
+  @media (max-width: 1100px) {
+    .hero {
+      grid-template-columns: 1fr 1fr;
+      gap: 36px;
+    }
+    .grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    select {
+      min-width: 160px;
+    }
+  }
+  @media (max-width: 860px) {
+    .hero {
+      grid-template-columns: 1fr;
+    }
+    .hero-copy p {
+      max-width: 44ch;
+    }
+    .count {
+      margin-left: 0;
+      width: 100%;
+    }
+  }
+  @media (max-width: 600px) {
+    .grid {
+      grid-template-columns: 1fr;
+    }
+    select {
+      min-width: 0;
+      width: 100%;
+    }
+    .field {
+      flex: 1 1 100%;
+    }
   }
 </style>
