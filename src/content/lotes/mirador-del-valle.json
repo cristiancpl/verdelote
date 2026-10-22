@@ -1,0 +1,68 @@
+{
+  "nombre": "Lote Mirador del Valle",
+  "tagline": "3.800 m² de montaña, listos para construir",
+  "resumen": "Explanación hecha, escrituras al día y una vista que se abre sobre el valle. A 15 minutos del parque de Girardota",
+  "municipio": "Girardota",
+  "departamento": "Antioquia",
+  "vereda": "Vereda Mercedes Ábrego",
+  "area_m2": 3800,
+  "explanacion_m2": 1000,
+  "precio_cop": 250000000,
+  "estado": "disponible",
+  "destacado": true,
+  "demo": false,
+  "orden": 1,
+  "atributos": [
+    "Escrituras al 100%",
+    "Explanación de 1.000 m²",
+    "Agua de riego",
+    "Acueducto veredal",
+    "Carretera en buen estado hasta el lote",
+    "Zona de alta valorización"
+  ],
+  "cercanias": [
+    { "lugar": "Doble calzada", "minutos": 6 },
+    { "lugar": "Parque de Girardota", "minutos": 15 },
+    { "lugar": "Colegio y escuela", "minutos": 5 },
+    { "lugar": "Iglesia", "minutos": 5 },
+    { "lugar": "Supermercados y carnicerías", "minutos": 5 },
+    { "lugar": "Depósito de materiales", "minutos": 5 }
+  ],
+  "portada": "../../assets/lotes/mirador-del-valle/portada-explanacion-valle.jpg",
+  "galeria": [
+    { "src": "../../assets/lotes/mirador-del-valle/portada-explanacion-valle.jpg", "alt": "Explanación del lote con el valle y el pueblo al fondo" },
+    { "src": "../../assets/lotes/mirador-del-valle/explanacion-vista.jpg", "alt": "Explanación en tierra con vista abierta a las montañas" },
+    { "src": "../../assets/lotes/mirador-del-valle/explanacion-talud.jpg", "alt": "Explanación con talud cortado y vía de acceso" },
+    { "src": "../../assets/lotes/mirador-del-valle/borde-bosque.jpg", "alt": "Borde del lote junto al bosque nativo" },
+    { "src": "../../assets/lotes/mirador-del-valle/via-acceso.jpg", "alt": "Vía en concreto que baja hasta el lote" },
+    { "src": "../../assets/lotes/mirador-del-valle/via-montana.jpg", "alt": "Vía de acceso entre montañas" },
+    { "src": "../../assets/lotes/mirador-del-valle/llegada-porton.jpg", "alt": "Llegada por la vía en concreto con vista al valle" },
+    { "src": "../../assets/lotes/mirador-del-valle/via-arbol.jpg", "alt": "Vía de acceso bajo un árbol grande" }
+  ],
+  "ubicacion": {
+    "src": "../../assets/lotes/mirador-del-valle/ubicacion-panoramica.jpg",
+    "alt": "Vista panorámica de la ladera con el lote señalado en amarillo"
+  },
+  "recorrido": [
+    {
+      "titulo": "Llegada",
+      "descripcion": "Carretera en buen estado hasta la entrada del lote",
+      "poster": "../../assets/lotes/mirador-del-valle/via-acceso.jpg"
+    },
+    {
+      "titulo": "El terreno",
+      "descripcion": "1.000 m² ya explanados, listos para construir",
+      "poster": "../../assets/lotes/mirador-del-valle/explanacion-talud.jpg"
+    },
+    {
+      "titulo": "La vista",
+      "descripcion": "Montaña al frente y el valle abierto a tus pies",
+      "poster": "../../assets/lotes/mirador-del-valle/explanacion-vista.jpg"
+    },
+    {
+      "titulo": "Desde el aire",
+      "descripcion": "3.800 m² en una ladera verde de Girardota",
+      "poster": "../../assets/lotes/mirador-del-valle/portada-explanacion-valle.jpg"
+    }
+  ]
+}

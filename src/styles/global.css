@@ -1,0 +1,71 @@
+/* Estilos base provisionales. El diseño final sale de la exploración UX (Parte 1, paso 4) */
+:root {
+  --bg: #ffffff;
+  --bg-soft: #f5f5f7;
+  --text: #1d1d1f;
+  --text-soft: #6e6e73;
+  --accent: #3a7d44;
+  --radius: 18px;
+  --max: 1120px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000;
+    --bg-soft: #1c1c1e;
+    --text: #f5f5f7;
+    --text-soft: #a1a1a6;
+    --accent: #6cc17a;
+    color-scheme: dark;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', sans-serif;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+a {
+  color: inherit;
+}
+
+main {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 0 16px 80px;
+}
+
+.site-header,
+.site-footer {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 20px 16px;
+}
+
+.brand {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+
+.site-footer {
+  color: var(--text-soft);
+  font-size: 0.875rem;
+}

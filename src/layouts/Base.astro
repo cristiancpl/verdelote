@@ -1,0 +1,35 @@
+---
+import { url } from '../lib/format';
+import '../styles/global.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = 'Verdelote',
+  description = 'Lotes en Antioquia con recorrido virtual',
+} = Astro.props;
+---
+
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <link rel="icon" type="image/svg+xml" href={url('favicon.svg')} />
+    <title>{title}</title>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href={url()}>Verdelote</a>
+    </header>
+    <main>
+      <slot />
+    </main>
+    <footer class="site-footer">
+      <p>Verdelote · Prototipo</p>
+    </footer>
+  </body>
+</html>

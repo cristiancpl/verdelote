@@ -1,0 +1,18 @@
+{
+  "nombre": "Lote Quebrada Clara",
+  "tagline": "Una quebrada propia en el oriente cercano",
+  "resumen": "Lote de demostración en Guarne. Datos e imágenes de ejemplo",
+  "municipio": "Guarne",
+  "departamento": "Antioquia",
+  "area_m2": 5000,
+  "precio_cop": 310000000,
+  "estado": "disponible",
+  "destacado": false,
+  "demo": true,
+  "orden": 3,
+  "atributos": [
+    "Quebrada en el lindero",
+    "Topografía suave",
+    "Energía en la vía"
+  ]
+}

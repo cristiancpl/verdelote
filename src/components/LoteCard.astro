@@ -1,0 +1,96 @@
+---
+import { Image } from 'astro:assets';
+import type { CollectionEntry } from 'astro:content';
+import { formatArea, formatPrecio, url } from '../lib/format';
+
+interface Props {
+  lote: CollectionEntry<'lotes'>;
+}
+
+const { lote } = Astro.props;
+const d = lote.data;
+---
+
+<a class="card" href={url(`lotes/${lote.id}/`)}>
+  <div class="media">
+    {
+      d.portada ? (
+        <Image src={d.portada} alt={d.nombre} widths={[480, 800]} sizes="(max-width: 720px) 100vw, 360px" />
+      ) : (
+        <div class="placeholder" aria-hidden="true" />
+      )
+    }
+    {d.recorrido.length > 0 && <span class="badge">Recorrido virtual</span>}
+    {d.demo && <span class="badge badge-demo">Demo</span>}
+  </div>
+  <div class="body">
+    <h3>{d.nombre}</h3>
+    <p class="meta">{d.municipio} · {formatArea(d.area_m2)}</p>
+    <p class="price">
+      {formatPrecio(d.precio_cop)}
+      {d.estado !== 'disponible' && <span class="estado">{d.estado}</span>}
+    </p>
+  </div>
+</a>
+
+<style>
+  .card {
+    display: block;
+    text-decoration: none;
+    border-radius: var(--radius);
+    background: var(--bg-soft);
+    overflow: hidden;
+  }
+  .media {
+    position: relative;
+    aspect-ratio: 4 / 3;
+  }
+  .media img,
+  .placeholder {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .placeholder {
+    background: linear-gradient(160deg, #cfe3c9 0%, #8fb98b 55%, #4f7f52 100%);
+  }
+  .badge {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+  .badge-demo {
+    left: auto;
+    right: 12px;
+    background: rgba(255, 255, 255, 0.85);
+    color: #1d1d1f;
+  }
+  .body {
+    padding: 16px 18px 20px;
+  }
+  h3 {
+    margin: 0;
+    font-size: 1.125rem;
+    letter-spacing: -0.01em;
+  }
+  .meta {
+    margin: 4px 0 0;
+    color: var(--text-soft);
+  }
+  .price {
+    margin: 10px 0 0;
+    font-weight: 600;
+  }
+  .estado {
+    margin-left: 8px;
+    color: var(--text-soft);
+    font-weight: 400;
+    text-transform: capitalize;
+  }
+</style>

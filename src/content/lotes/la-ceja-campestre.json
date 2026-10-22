@@ -1,0 +1,18 @@
+{
+  "nombre": "Lote La Ceja Campestre",
+  "tagline": "Parcelación cerrada con portería",
+  "resumen": "Lote de demostración en La Ceja. Datos e imágenes de ejemplo",
+  "municipio": "La Ceja",
+  "departamento": "Antioquia",
+  "area_m2": 3200,
+  "precio_cop": 390000000,
+  "estado": "reservado",
+  "destacado": false,
+  "demo": true,
+  "orden": 5,
+  "atributos": [
+    "Portería 24 horas",
+    "Vías internas",
+    "Zonas comunes"
+  ]
+}

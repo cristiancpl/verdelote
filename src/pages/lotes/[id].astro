@@ -1,0 +1,221 @@
+---
+import { Image } from 'astro:assets';
+import { getCollection, type CollectionEntry } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import { formatArea, formatPrecio } from '../../lib/format';
+
+export async function getStaticPaths() {
+  const lotes = await getCollection('lotes');
+  return lotes.map((lote) => ({ params: { id: lote.id }, props: { lote } }));
+}
+
+interface Props {
+  lote: CollectionEntry<'lotes'>;
+}
+
+const { lote } = Astro.props;
+const d = lote.data;
+const lugar = [d.vereda, d.municipio, d.departamento].filter(Boolean).join(', ');
+---
+
+<Base title={`${d.nombre} · Verdelote`} description={d.resumen}>
+  <section class="hero">
+    {d.demo && <p class="demo">Lote de demostración</p>}
+    <h1>{d.nombre}</h1>
+    <p class="tagline">{d.tagline}</p>
+    <p class="lugar">{lugar}</p>
+  </section>
+
+  <section class="cifras" aria-label="Datos clave">
+    <div><strong>{formatArea(d.area_m2)}</strong><span>Área total</span></div>
+    {d.explanacion_m2 && <div><strong>{formatArea(d.explanacion_m2)}</strong><span>Explanados</span></div>}
+    <div><strong>{formatPrecio(d.precio_cop)}</strong><span class="estado">{d.estado}</span></div>
+  </section>
+
+  <p class="resumen">{d.resumen}</p>
+
+  {
+    d.recorrido.length > 0 && (
+      <section class="recorrido" aria-label="Recorrido">
+        <h2>Recorrido</h2>
+        {d.recorrido.map((c, i) => (
+          <article class="capitulo">
+            {c.video ? (
+              <video src={c.video} poster={c.poster.src} muted playsinline loop preload="metadata" />
+            ) : (
+              <Image src={c.poster} alt={c.titulo} widths={[640, 1200]} sizes="(max-width: 720px) 100vw, 1120px" />
+            )}
+            <div>
+              <span class="num">{String(i + 1).padStart(2, '0')}</span>
+              <h3>{c.titulo}</h3>
+              <p>{c.descripcion}</p>
+            </div>
+          </article>
+        ))}
+      </section>
+    )
+  }
+
+  {
+    d.atributos.length > 0 && (
+      <section>
+        <h2>Lo que incluye</h2>
+        <ul class="lista">
+          {d.atributos.map((a) => <li>{a}</li>)}
+        </ul>
+      </section>
+    )
+  }
+
+  {
+    d.cercanias.length > 0 && (
+      <section>
+        <h2>Cerca de todo</h2>
+        <ul class="lista">
+          {d.cercanias.map((c) => (
+            <li>
+              {c.lugar}
+              {c.minutos && <span class="min">{c.minutos} min</span>}
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+
+  {
+    d.galeria.length > 0 && (
+      <section>
+        <h2>Galería</h2>
+        <div class="galeria">
+          {d.galeria.map((g) => (
+            <Image src={g.src} alt={g.alt} widths={[400, 800]} sizes="(max-width: 720px) 50vw, 360px" />
+          ))}
+        </div>
+      </section>
+    )
+  }
+
+  {
+    d.ubicacion && (
+      <section>
+        <h2>Ubicación</h2>
+        <Image src={d.ubicacion.src} alt={d.ubicacion.alt} widths={[640, 1200]} sizes="(max-width: 720px) 100vw, 1120px" />
+      </section>
+    )
+  }
+</Base>
+
+<style>
+  .hero {
+    padding: 48px 0 24px;
+  }
+  .demo {
+    margin: 0 0 8px;
+    color: var(--text-soft);
+    font-size: 0.875rem;
+  }
+  h1 {
+    margin: 0;
+    font-size: clamp(2.25rem, 7vw, 4rem);
+    line-height: 1.02;
+    letter-spacing: -0.035em;
+  }
+  .tagline {
+    margin: 12px 0 0;
+    font-size: clamp(1.25rem, 3vw, 1.75rem);
+    letter-spacing: -0.015em;
+  }
+  .lugar {
+    margin: 8px 0 0;
+    color: var(--text-soft);
+  }
+  .cifras {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    padding: 24px 0;
+  }
+  .cifras div {
+    display: flex;
+    flex-direction: column;
+  }
+  .cifras strong {
+    font-size: 1.75rem;
+    letter-spacing: -0.02em;
+  }
+  .cifras span {
+    color: var(--text-soft);
+  }
+  .estado {
+    text-transform: capitalize;
+  }
+  .resumen {
+    max-width: 640px;
+    font-size: 1.25rem;
+  }
+  h2 {
+    margin: 64px 0 20px;
+    font-size: 1.75rem;
+    letter-spacing: -0.02em;
+  }
+  .capitulo {
+    margin-bottom: 40px;
+  }
+  .capitulo img,
+  .capitulo video {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    border-radius: var(--radius);
+  }
+  .capitulo h3 {
+    margin: 12px 0 0;
+    font-size: 1.25rem;
+  }
+  .capitulo p {
+    margin: 4px 0 0;
+    color: var(--text-soft);
+  }
+  .num {
+    display: block;
+    margin-top: 16px;
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 0.875rem;
+  }
+  .lista {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+  }
+  .lista li {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 18px;
+    border-radius: 14px;
+    background: var(--bg-soft);
+  }
+  .min {
+    color: var(--text-soft);
+    white-space: nowrap;
+  }
+  .galeria {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+  }
+  .galeria img {
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    object-fit: cover;
+    border-radius: 14px;
+  }
+  section > img {
+    border-radius: var(--radius);
+  }
+</style>

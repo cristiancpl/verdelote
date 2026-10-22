@@ -1,0 +1,40 @@
+---
+import { getCollection } from 'astro:content';
+import LoteCard from '../components/LoteCard.astro';
+import Base from '../layouts/Base.astro';
+
+const lotes = (await getCollection('lotes')).sort((a, b) => a.data.orden - b.data.orden);
+---
+
+<Base>
+  <section class="intro">
+    <h1>Camina el lote antes de visitarlo</h1>
+    <p>Lotes en Antioquia con recorrido virtual</p>
+  </section>
+
+  <section class="grid" aria-label="Lotes">
+    {lotes.map((lote) => <LoteCard lote={lote} />)}
+  </section>
+</Base>
+
+<style>
+  .intro {
+    padding: 48px 0 32px;
+  }
+  h1 {
+    margin: 0;
+    font-size: clamp(2rem, 6vw, 3.5rem);
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+  }
+  .intro p {
+    margin: 12px 0 0;
+    color: var(--text-soft);
+    font-size: 1.25rem;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+  }
+</style>
