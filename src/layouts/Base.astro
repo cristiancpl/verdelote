@@ -14,6 +14,8 @@ interface Props {
   jsonLd?: object | object[];
   /** Páginas que no deben indexarse ni llevar canónica (404) */
   noindex?: boolean;
+  /** overlay: navegación transparente sobre una portada a pantalla completa; solid: barra con fondo propio */
+  nav?: 'overlay' | 'solid';
 }
 
 const SITE_NAME = 'Verdelote';
@@ -24,6 +26,7 @@ const {
   imageAlt = 'Verdelote, lotes en Antioquia',
   jsonLd,
   noindex = false,
+  nav = 'solid',
 } = Astro.props;
 
 const fullTitle = title ? `${title} · ${SITE_NAME}` : `${SITE_NAME} · Lotes en Antioquia con recorrido en video`;
@@ -39,8 +42,11 @@ const ldJson = (node: object) => JSON.stringify(node).replace(/</g, '\\u003c');
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
-    <meta name="theme-color" content="#fbfbfa" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#0f1112" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#0b0c0d" />
+    <meta name="color-scheme" content="dark" />
+    <script is:inline>
+      document.documentElement.classList.add('js');
+    </script>
     <link rel="icon" type="image/svg+xml" href={url('favicon.svg')} />
     <link rel="apple-touch-icon" href={url('apple-touch-icon.png')} />
     {noindex ? <meta name="robots" content="noindex" /> : <link rel="canonical" href={canonical} />}
@@ -61,14 +67,17 @@ const ldJson = (node: object) => JSON.stringify(node).replace(/</g, '\\u003c');
     {nodes.map((node) => <script type="application/ld+json" set:html={ldJson(node)} />)}
   </head>
   <body>
-    <header class="wrap site-nav">
-      <a class="brand" href={url()}><Icon name="mountains" />Verdelote</a>
-      <nav aria-label="Principal">
-        <a href={url()} aria-current={Astro.url.pathname === url('/') ? 'page' : undefined}>Lotes</a>
-      </nav>
+    <header class:list={['nav', 'no-print', { solid: nav === 'solid' }]} id="nav" data-nav>
+      <div class="wrap">
+        <a class="brand" href={url()}><Icon name="mountains" />Verdelote</a>
+        <nav aria-label="Principal">
+          <a href={url('#lotes')} aria-current={Astro.url.pathname === url('/') ? 'page' : undefined}>Lotes</a>
+        </nav>
+        <div class="right"><slot name="nav-right" /></div>
+      </div>
     </header>
     <slot name="localbar" />
-    <main class="wrap">
+    <main class:list={{ 'with-nav': nav === 'solid' }}>
       <slot />
     </main>
     <footer class="wrap site-footer">
@@ -79,11 +88,26 @@ const ldJson = (node: object) => JSON.stringify(node).replace(/</g, '\\u003c');
 </html>
 
 <style>
-  .site-nav {
-    height: 64px;
+  .nav {
+    position: fixed;
+    inset: 0 0 auto;
+    z-index: 30;
+    height: var(--nav-h);
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    transition: background 0.4s, backdrop-filter 0.4s, opacity 0.35s, visibility 0.35s;
+  }
+  .nav.solid {
+    background: rgb(11 12 13 / 0.72);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav .wrap {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 32px;
   }
   .brand {
     display: flex;
@@ -102,23 +126,39 @@ const ldJson = (node: object) => JSON.stringify(node).replace(/</g, '\\u003c');
   nav a {
     display: inline-flex;
     align-items: center;
-    justify-content: flex-end;
     min-width: 44px;
     min-height: 44px;
-    color: var(--muted);
+    color: rgb(244 245 243 / 0.78);
     font-size: 0.9375rem;
   }
+  nav a:hover,
   nav a[aria-current='page'] {
     color: var(--text);
   }
+  .right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  main.with-nav {
+    padding-top: var(--nav-h);
+  }
   .site-footer {
-    padding-top: 48px;
-    padding-bottom: 48px;
+    padding-top: 56px;
+    padding-bottom: 56px;
     color: var(--muted);
     font-size: 0.875rem;
   }
+  @media (max-width: 700px) {
+    .nav .wrap {
+      gap: 16px;
+    }
+    nav {
+      display: none;
+    }
+  }
   @media print {
-    .site-nav,
     .site-footer {
       display: none;
     }

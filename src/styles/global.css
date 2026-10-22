@@ -1,39 +1,37 @@
-/* Monocromo frío + un solo acento verde. Radio único: 16px en superficies, pill en controles */
+/* Tema cinemático: oscuro único, un solo acento verde, radio 18px en superficies y pill en controles.
+   Escala de capas (z-index): nav 30, barra fija de la ficha 40, toast 60. Diálogos usan la capa superior nativa */
 @import '@fontsource/geist-sans/400.css';
 @import '@fontsource/geist-sans/500.css';
 @import '@fontsource/geist-sans/600.css';
+@import '@fontsource/geist-sans/700.css';
 
 :root {
-  --bg: #fbfbfa;
-  --surface: #f1f2f0;
-  --text: #16181a;
-  --muted: #5f6468;
-  --line: #e2e4e1;
-  --accent: #2f6b3f;
-  --accent-ink: #ffffff;
-  --radius: 16px;
-  --max: 1280px;
+  --bg: #0b0c0d;
+  --bg-2: #141618;
+  --card: #1a1d1f;
+  --surface: #1a1d1f;
+  --text: #f4f5f3;
+  --muted: #a4aaa6;
+  --line: rgb(255 255 255 / 0.1);
+  --accent: #6cc17a;
+  --accent-ink: #08130b;
+  --radius: 18px;
+  --max: 1320px;
+  --nav-h: 64px;
+  --gutter: 48px;
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
-  color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    --bg: #0f1112;
-    --surface: #1a1d1f;
-    --text: #f1f2f0;
-    --muted: #a3a8ac;
-    --line: #2a2e31;
-    --accent: #5fb072;
-    --accent-ink: #0f1112;
-    color-scheme: dark;
-  }
+  color-scheme: dark;
 }
 
 *,
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+html {
+  background: var(--bg);
+  scroll-behavior: smooth;
 }
 
 body {
@@ -43,6 +41,7 @@ body {
   font-family: 'Geist Sans', -apple-system, 'Segoe UI', sans-serif;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
 }
 
 img,
@@ -61,18 +60,19 @@ h2,
 h3 {
   margin: 0;
   font-weight: 600;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.035em;
   text-wrap: balance;
 }
 
 p {
+  margin: 0;
   text-wrap: pretty;
 }
 
 .wrap {
   max-width: var(--max);
   margin: 0 auto;
-  padding: 0 40px;
+  padding: 0 var(--gutter);
 }
 
 .muted {
@@ -86,11 +86,18 @@ p {
   fill: currentColor;
 }
 
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* Botones: pill, 46px de alto (objetivo táctil mayor a 44px) */
 .btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  height: 44px;
+  height: 46px;
   padding: 0 22px;
   border: 0;
   border-radius: 999px;
@@ -99,11 +106,11 @@ p {
   font-size: 0.9375rem;
   white-space: nowrap;
   cursor: pointer;
-  transition: transform 0.2s var(--ease), background 0.2s;
+  transition: transform 0.25s var(--ease), background 0.25s, color 0.25s;
 }
 
 .btn:active {
-  transform: scale(0.98);
+  transform: scale(0.97);
 }
 
 .btn-primary {
@@ -111,14 +118,75 @@ p {
   color: var(--accent-ink);
 }
 
+.btn-primary:hover {
+  background: color-mix(in srgb, var(--accent) 88%, #fff);
+}
+
+.btn-light {
+  background: var(--text);
+  color: #0b0c0d;
+}
+
+.btn-light:hover {
+  background: #fff;
+}
+
+.btn-glass {
+  background: rgb(255 255 255 / 0.14);
+  color: #fff;
+  border: 1px solid rgb(255 255 255 / 0.22);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.btn-glass:hover {
+  background: rgb(255 255 255 / 0.22);
+}
+
 .btn-ghost {
-  background: var(--surface);
+  background: var(--card);
   color: var(--text);
 }
 
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
+.btn-ghost:hover {
+  background: color-mix(in srgb, var(--card) 80%, #fff);
+}
+
+.btn-sm {
+  height: 44px;
+  padding: 0 18px;
+  font-size: 0.875rem;
+}
+
+.icon-btn {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 0.22);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.12);
+  color: #fff;
+  font-size: 1.15rem;
+  cursor: pointer;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition: background 0.25s, transform 0.25s var(--ease);
+}
+
+.icon-btn:hover:not(:disabled) {
+  background: rgb(255 255 255 / 0.22);
+}
+
+.icon-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 /* Botón de pausa sobre video (WCAG 2.2.2) */
@@ -126,8 +194,9 @@ p {
   position: absolute;
   right: 16px;
   bottom: 16px;
-  width: 44px;
-  height: 44px;
+  z-index: 3;
+  width: 46px;
+  height: 46px;
   display: grid;
   place-items: center;
   border: 1px solid rgb(255 255 255 / 0.25);
@@ -139,20 +208,86 @@ p {
   cursor: pointer;
 }
 
-/* Placeholder honesto para lotes sin fotos */
-.noimg {
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 0.875rem;
-  background: linear-gradient(160deg, var(--surface), color-mix(in srgb, var(--accent) 14%, var(--surface)));
+.pause[hidden] {
+  display: none;
 }
 
-.noimg .icon {
-  width: 1.75rem;
-  height: 1.75rem;
+/* Escena a pantalla completa (portada del inicio y de la ficha) */
+.stage {
+  position: relative;
+  height: 100dvh;
+  min-height: 640px;
+  overflow: hidden;
+  background: #000;
+}
+
+.stage > video,
+.stage > .bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.stage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgb(0 0 0 / 0.45) 0%, transparent 22%, transparent 55%, rgb(0 0 0 / 0.78) 100%);
+}
+
+.stage-ui {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding-bottom: 56px;
+}
+
+.stage-ui > .wrap {
+  width: 100%;
+}
+
+/* Portada sobria de los lotes sin video ni fotos */
+.bg-sobrio {
+  background:
+    radial-gradient(120% 90% at 78% 12%, rgb(108 193 122 / 0.22), transparent 55%),
+    linear-gradient(160deg, #1d2120 0%, #172a20 55%, #0f1613 100%);
+}
+
+.band {
+  padding: 140px 0;
+}
+
+.eyebrow {
+  margin-bottom: 14px;
+  color: var(--accent);
+  font-weight: 500;
+  font-size: 1rem;
+}
+
+.h-lg {
+  font-size: clamp(2.4rem, 4.4vw, 4rem);
+  line-height: 1.02;
+}
+
+.reveal {
+  opacity: 1;
+}
+
+.js .reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.9s var(--ease), transform 0.9s var(--ease);
+}
+
+.js .reveal.in {
+  opacity: 1;
+  transform: none;
 }
 
 .sr-only {
@@ -164,18 +299,71 @@ p {
   white-space: nowrap;
 }
 
+/* Placeholder honesto para lotes sin fotos */
+.noimg {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.875rem;
+  background: linear-gradient(160deg, #1d2120, #20332a);
+}
+
+.noimg .icon {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
   *,
   *::before,
   *::after {
     transition: none !important;
     animation: none !important;
   }
+
+  .js .reveal {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .btn-glass,
+  .icon-btn,
+  .pause {
+    background: #20252a;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 @media (max-width: 1100px) {
-  .wrap {
-    padding: 0 28px;
+  :root {
+    --gutter: 32px;
+  }
+
+  .band {
+    padding: 104px 0;
+  }
+}
+
+@media (max-width: 700px) {
+  :root {
+    --gutter: 20px;
+  }
+
+  .band {
+    padding: 72px 0;
+  }
+
+  .stage-ui {
+    padding-bottom: 32px;
   }
 }
 
@@ -184,7 +372,7 @@ p {
   position: fixed;
   left: 50%;
   bottom: 28px;
-  z-index: 40;
+  z-index: 60;
   max-width: calc(100vw - 32px);
   padding: 10px 18px;
   border-radius: 999px;
@@ -217,19 +405,24 @@ p {
 }
 
 @media print {
-  :root,
-  :root:not([data-theme='light']) {
+  :root {
     --bg: #ffffff;
+    --bg-2: #f1f2f0;
+    --card: #f1f2f0;
     --surface: #f1f2f0;
     --text: #16181a;
     --muted: #4a4f53;
     --line: #cfd2cf;
     --accent: #2f6b3f;
+    --accent-ink: #ffffff;
+    --gutter: 0px;
     color-scheme: light;
   }
 
+  html,
   body {
     background: #fff;
+    color: var(--text);
   }
 
   .wrap {
