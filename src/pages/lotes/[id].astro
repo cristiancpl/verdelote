@@ -4,7 +4,7 @@ import { getCollection, type CollectionEntry } from 'astro:content';
 import Icon, { type IconName } from '../../components/Icon.astro';
 import PauseButton from '../../components/PauseButton.astro';
 import Base from '../../layouts/Base.astro';
-import { absoluteUrl, formatArea, formatPrecio, url } from '../../lib/format';
+import { absoluteUrl, formatArea, formatPrecio, formatPrecioM2, url } from '../../lib/format';
 
 export async function getStaticPaths() {
   const lotes = await getCollection('lotes');
@@ -70,18 +70,39 @@ const og = d.portada
   ? await getImage({ src: d.portada, width: 1200, height: 630, fit: 'cover', format: 'jpg', quality: 78 })
   : undefined;
 const descripcion = `${formatArea(d.area_m2)} en ${d.municipio}, ${d.departamento} por ${formatPrecio(d.precio_cop)}. ${d.resumen}`;
+
+const fichaUrl = absoluteUrl(Astro.url.pathname);
+const precioM2 = formatPrecioM2(d.precio_cop, d.area_m2);
+const rutaUrl = d.coordenadas
+  ? `https://www.google.com/maps/dir/?api=1&destination=${d.coordenadas.lat},${d.coordenadas.lon}`
+  : undefined;
 ---
 
 <Base title={d.nombre} description={descripcion} image={og ? absoluteUrl(og.src) : undefined} imageAlt={d.nombre}>
-  <div class="localbar" slot="localbar">
+  <div class="localbar no-print" slot="localbar">
     <div class="wrap">
-      <a class="back" href={url()}><Icon name="caret-left" /><span>Lotes</span></a>
+      <a class="back" href={url()} aria-label="Volver a los lotes"><Icon name="caret-left" /><span>Lotes</span></a>
       <span class="name">{d.nombre}</span>
       <div class="right">
-        <span class="price">{formatPrecio(d.precio_cop)}</span>
+        <div class="pricebox">
+          <span class="price">{formatPrecio(d.precio_cop)}</span>
+          <span class="ppm">{precioM2}</span>
+        </div>
+        <button
+          type="button"
+          class="btn btn-ghost share"
+          data-share
+          data-url={fichaUrl}
+          data-title={d.nombre}
+          data-text={d.tagline}
+          aria-label="Compartir este lote"
+        >
+          <Icon name="share-network" />
+          <span>Compartir</span>
+        </button>
         {
           whatsappUrl && (
-            <a class="btn btn-primary" href={whatsappUrl} target="_blank" rel="noopener">
+            <a class="btn btn-primary cta-top" href={whatsappUrl} target="_blank" rel="noopener">
               <Icon name="whatsapp" />
               Agendar visita
             </a>
@@ -95,7 +116,19 @@ const descripcion = `${formatArea(d.area_m2)} en ${d.municipio}, ${d.departament
     {d.demo && <p class="demo">Lote de demostración, con datos de ejemplo</p>}
     <h1>{d.nombre}</h1>
     <span class="tag">{d.tagline}</span>
-    <span class="loc"><Icon name="map-pin" />{lugar}</span>
+    <div class="where">
+      <span class="loc"><Icon name="map-pin" />{lugar}</span>
+      {
+        rutaUrl && (
+          <a class="route" href={rutaUrl} target="_blank" rel="noopener">
+            <Icon name="navigation-arrow" />
+            Cómo llegar
+            <span class="sr-only">(abre Google Maps)</span>
+          </a>
+        )
+      }
+      {d.coordenadas?.aproximadas && <span class="approx">Ubicación aproximada</span>}
+    </div>
   </section>
 
   <section aria-label="Recorrido" data-recorrido>
@@ -313,12 +346,29 @@ const descripcion = `${formatArea(d.area_m2)} en ${d.municipio}, ${d.departament
       </section>
     )
   }
+
+  {
+    whatsappUrl && (
+      <div class="bottombar no-print">
+        <div class="bb-price">
+          <strong>{formatPrecio(d.precio_cop)}</strong>
+          <span>{precioM2}</span>
+        </div>
+        <a class="btn btn-primary" href={whatsappUrl} target="_blank" rel="noopener">
+          <Icon name="whatsapp" />
+          Agendar visita
+        </a>
+      </div>
+    )
+  }
 </Base>
 
 <script>
+  import { initShare } from '../../lib/share';
   import { initPauseButtons } from '../../lib/video-controls';
 
   initPauseButtons();
+  initShare();
 
   // Capítulos: cambian el panel visible del visor y reproducen el video si lo hay
   const root = document.querySelector<HTMLElement>('[data-recorrido]');
@@ -407,16 +457,31 @@ const descripcion = `${formatArea(d.area_m2)} en ${d.municipio}, ${d.departament
     margin-left: auto;
     display: flex;
     align-items: center;
-    gap: 20px;
+    gap: 12px;
+  }
+  .pricebox {
+    display: grid;
+    justify-items: end;
+    margin-right: 8px;
+    line-height: 1.25;
   }
   .price {
     font-weight: 500;
+    white-space: nowrap;
+  }
+  .ppm {
+    color: var(--muted);
+    font-size: 0.75rem;
     white-space: nowrap;
   }
   .localbar .btn {
     height: 38px;
     padding: 0 18px;
     font-size: 0.875rem;
+  }
+
+  .bottombar {
+    display: none;
   }
 
   .head {
@@ -438,12 +503,33 @@ const descripcion = `${formatArea(d.area_m2)} en ${d.municipio}, ${d.departament
     font-size: 1.375rem;
     letter-spacing: -0.01em;
   }
-  .loc {
+  .where {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 18px;
+    font-size: 0.9375rem;
+  }
+  .loc,
+  .route {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+  }
+  .loc {
     color: var(--muted);
-    font-size: 0.9375rem;
+  }
+  .route {
+    color: var(--accent);
+    font-weight: 500;
+  }
+  .route:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .approx {
+    color: var(--muted);
+    font-size: 0.8125rem;
   }
 
   .stage {
@@ -810,8 +896,14 @@ const descripcion = `${formatArea(d.area_m2)} en ${d.municipio}, ${d.departament
   }
   @media (max-width: 860px) {
     .back span,
-    .localbar .price {
+    .pricebox,
+    .share span {
       display: none;
+    }
+    .localbar .share {
+      width: 38px;
+      padding: 0;
+      justify-content: center;
     }
     .gallery {
       grid-template-columns: 1fr 1fr;
@@ -835,6 +927,56 @@ const descripcion = `${formatArea(d.area_m2)} en ${d.municipio}, ${d.departament
     }
     .near > .wide {
       grid-column: auto;
+    }
+
+    /* Barra superior compacta y acción principal fija abajo, al alcance del pulgar */
+    .localbar .wrap {
+      height: 52px;
+      gap: 12px;
+    }
+    .name {
+      font-size: 1rem;
+    }
+    .cta-top {
+      display: none;
+    }
+    .bottombar {
+      position: fixed;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+      border-top: 1px solid var(--line);
+      background: color-mix(in srgb, var(--bg) 88%, transparent);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+    }
+    .bb-price {
+      display: grid;
+      line-height: 1.25;
+    }
+    .bb-price strong {
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .bb-price span {
+      color: var(--muted);
+      font-size: 0.75rem;
+      white-space: nowrap;
+    }
+    .bottombar .btn {
+      height: 46px;
+    }
+    :global(.site-footer) {
+      padding-bottom: calc(48px + 72px + env(safe-area-inset-bottom));
+    }
+    :global(.toast) {
+      bottom: calc(88px + env(safe-area-inset-bottom));
     }
   }
 </style>
