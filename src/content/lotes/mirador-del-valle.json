@@ -21,31 +21,69 @@
     "Zona de alta valorización"
   ],
   "cercanias": [
-    { "lugar": "Doble calzada", "minutos": 6 },
-    { "lugar": "Parque de Girardota", "minutos": 15 },
-    { "lugar": "Colegio y escuela", "minutos": 5 },
-    { "lugar": "Iglesia", "minutos": 5 },
-    { "lugar": "Supermercados y carnicerías", "minutos": 5 },
-    { "lugar": "Depósito de materiales", "minutos": 5 }
+    {
+      "lugar": "Doble calzada",
+      "minutos": 6
+    },
+    {
+      "lugar": "Parque de Girardota",
+      "minutos": 15
+    },
+    {
+      "lugar": "Colegio y escuela",
+      "minutos": 5
+    },
+    {
+      "lugar": "Iglesia",
+      "minutos": 5
+    },
+    {
+      "lugar": "Supermercados y carnicerías",
+      "minutos": 5
+    },
+    {
+      "lugar": "Depósito de materiales",
+      "minutos": 5
+    }
   ],
   "portada": "../../assets/lotes/mirador-del-valle/portada-explanacion-valle.jpg",
   "galeria": [
-    { "src": "../../assets/lotes/mirador-del-valle/portada-explanacion-valle.jpg", "alt": "Explanación del lote con el valle y el pueblo al fondo" },
-    { "src": "../../assets/lotes/mirador-del-valle/explanacion-vista.jpg", "alt": "Explanación en tierra con vista abierta a las montañas" },
-    { "src": "../../assets/lotes/mirador-del-valle/explanacion-talud.jpg", "alt": "Explanación con talud cortado y vía de acceso" },
-    { "src": "../../assets/lotes/mirador-del-valle/borde-bosque.jpg", "alt": "Borde del lote junto al bosque nativo" },
-    { "src": "../../assets/lotes/mirador-del-valle/via-acceso.jpg", "alt": "Vía en concreto que baja hasta el lote" },
-    { "src": "../../assets/lotes/mirador-del-valle/via-montana.jpg", "alt": "Vía de acceso entre montañas" },
-    { "src": "../../assets/lotes/mirador-del-valle/llegada-porton.jpg", "alt": "Llegada por la vía en concreto con vista al valle" },
-    { "src": "../../assets/lotes/mirador-del-valle/via-arbol.jpg", "alt": "Vía de acceso bajo un árbol grande" }
+    {
+      "src": "../../assets/lotes/mirador-del-valle/portada-explanacion-valle.jpg",
+      "alt": "Explanación del lote con el valle y el pueblo al fondo"
+    },
+    {
+      "src": "../../assets/lotes/mirador-del-valle/explanacion-vista.jpg",
+      "alt": "Explanación en tierra con vista abierta a las montañas"
+    },
+    {
+      "src": "../../assets/lotes/mirador-del-valle/explanacion-talud.jpg",
+      "alt": "Explanación con talud cortado y vía de acceso"
+    },
+    {
+      "src": "../../assets/lotes/mirador-del-valle/borde-bosque.jpg",
+      "alt": "Borde del lote junto al bosque nativo"
+    },
+    {
+      "src": "../../assets/lotes/mirador-del-valle/via-acceso.jpg",
+      "alt": "Vía en concreto que baja hasta el lote"
+    },
+    {
+      "src": "../../assets/lotes/mirador-del-valle/via-montana.jpg",
+      "alt": "Vía de acceso entre montañas"
+    },
+    {
+      "src": "../../assets/lotes/mirador-del-valle/llegada-porton.jpg",
+      "alt": "Llegada por la vía en concreto con vista al valle"
+    },
+    {
+      "src": "../../assets/lotes/mirador-del-valle/via-arbol.jpg",
+      "alt": "Vía de acceso bajo un árbol grande"
+    }
   ],
   "contacto": {
     "nombre": "Andrés",
     "whatsapp": "573216953286"
-  },
-  "ubicacion": {
-    "src": "../../assets/lotes/mirador-del-valle/ubicacion-panoramica.jpg",
-    "alt": "Vista panorámica de la ladera con el lote señalado en amarillo"
   },
   "recorrido": [
     {
