@@ -104,6 +104,34 @@
     "poster": "../../assets/lotes/mirador-del-valle/recorrido-poster.jpg",
     "duracion": "1:05"
   },
+  "vuelo": {
+    "src": "lotes/mirador-del-valle/vuelo.mp4",
+    "poster": "../../assets/lotes/mirador-del-valle/vuelo-inicio.jpg",
+    "final": "../../assets/lotes/mirador-del-valle/vuelo-final.jpg",
+    "duracion_s": 32,
+    "etapas": [
+      {
+        "nombre": "Planeta",
+        "desde_s": 0
+      },
+      {
+        "nombre": "Colombia",
+        "desde_s": 9.9
+      },
+      {
+        "nombre": "Antioquia",
+        "desde_s": 14.8
+      },
+      {
+        "nombre": "Girardota",
+        "desde_s": 19.2
+      },
+      {
+        "nombre": "El lote",
+        "desde_s": 23.7
+      }
+    ]
+  },
   "teaser": "lotes/mirador-del-valle/teaser.mp4",
   "video_vertical": "lotes/mirador-del-valle/recorrido-vertical.mp4",
   "coordenadas": {
@@ -137,5 +165,43 @@
       "descripcion": "3.800 m² en una ladera verde de Girardota",
       "poster": "../../assets/lotes/mirador-del-valle/portada-explanacion-valle.jpg"
     }
-  ]
+  ],
+  "frase": {
+    "principal": "Explanación lista. Escrituras al día.",
+    "atenuada": "Y el valle entero a tus pies."
+  },
+  "historia": [
+    {
+      "etiqueta": "Ubicación",
+      "titulo": "En la ladera, sobre Girardota",
+      "texto": "A 6 minutos de la doble calzada y a 15 del parque principal. Campo, sin dejar la ciudad lejos",
+      "media": "../../assets/lotes/mirador-del-valle/vuelo-final.jpg"
+    },
+    {
+      "etiqueta": "Llegada",
+      "titulo": "Carretera hasta la puerta",
+      "texto": "Vía en concreto en buen estado hasta el lote. Llegas en carro, sin trochas",
+      "media": "../../assets/lotes/mirador-del-valle/via-acceso.jpg"
+    },
+    {
+      "etiqueta": "El terreno",
+      "titulo": "1.000 m² ya explanados",
+      "texto": "La explanación está hecha. Puedes empezar a construir desde el primer día",
+      "media": "../../assets/lotes/mirador-del-valle/explanacion-talud.jpg"
+    },
+    {
+      "etiqueta": "La vista",
+      "titulo": "Montaña al frente",
+      "texto": "El valle se abre a tus pies. Atardeceres sobre Girardota desde tu propia terraza",
+      "media": "../../assets/lotes/mirador-del-valle/la-vista-poster.jpg",
+      "video": "lotes/mirador-del-valle/la-vista.mp4"
+    },
+    {
+      "etiqueta": "Desde el aire",
+      "titulo": "3.800 m² para imaginar",
+      "texto": "Espacio para casa, huerta y jardín. Agua de riego y acueducto veredal",
+      "media": "../../assets/lotes/mirador-del-valle/portada-explanacion-valle.jpg"
+    }
+  ],
+  "foto_mosaico": 5
 }

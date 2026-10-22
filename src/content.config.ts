@@ -32,7 +32,18 @@ const lotes = defineCollection({
       video_completo: z
         .object({ src: z.string(), poster: image(), duracion: z.string() })
         .optional(),
-      // Corte corto en bucle para el hero del listado (ruta dentro de public/)
+      // Vuelo del planeta al lote (hero del inicio y botón "Ver el vuelo"). src es una ruta dentro de public/;
+      // poster es el primer cuadro, final el último (lote resaltado) y etapas marcan la línea de tiempo
+      vuelo: z
+        .object({
+          src: z.string(),
+          poster: image(),
+          final: image(),
+          duracion_s: z.number().positive(),
+          etapas: z.array(z.object({ nombre: z.string(), desde_s: z.number().min(0) })).min(1),
+        })
+        .optional(),
+      // Corte corto en bucle para el hero del listado cuando no hay vuelo (ruta dentro de public/)
       teaser: z.string().optional(),
       // Versión vertical (9:16) del recorrido para redes y WhatsApp (ruta dentro de public/)
       video_vertical: z.string().optional(),
@@ -51,6 +62,22 @@ const lotes = defineCollection({
           whatsapp: z.string().regex(/^\d{10,15}$/),
         })
         .optional(),
+      // Frase grande que abre la ficha: principal en blanco y atenuada a continuación
+      frase: z.object({ principal: z.string(), atenuada: z.string().optional() }).optional(),
+      // Capítulos del recorrido por scroll de la ficha; video es una ruta dentro de public/
+      historia: z
+        .array(
+          z.object({
+            etiqueta: z.string(),
+            titulo: z.string(),
+            texto: z.string(),
+            media: image(),
+            video: z.string().optional(),
+          }),
+        )
+        .default([]),
+      // Índice (base 0) de la galería que se muestra como foto del mosaico; si falta, la primera no usada en la historia
+      foto_mosaico: z.number().int().min(0).optional(),
       recorrido: z
         .array(
           z.object({

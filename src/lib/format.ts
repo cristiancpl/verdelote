@@ -26,3 +26,9 @@ export const formatTelefono = (digitos: string) =>
   /^57\d{10}$/.test(digitos)
     ? `+57 ${digitos.slice(2, 5)} ${digitos.slice(5, 8)} ${digitos.slice(8)}`
     : `+${digitos}`;
+
+/** Precio corto en millones, ej. 250000000 -> "$250 M" */
+export const formatPrecioCorto = (precio: number) => `$${num.format(Math.round(precio / 1_000_000))} M`;
+
+/** "Lote Mirador del Valle" -> "Mirador del Valle" (nombre para titulares y tarjetas) */
+export const nombreCorto = (nombre: string) => nombre.replace(/^Lote\s+/i, '');
