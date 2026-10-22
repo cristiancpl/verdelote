@@ -76,9 +76,60 @@ const precioM2 = formatPrecioM2(d.precio_cop, d.area_m2);
 const rutaUrl = d.coordenadas
   ? `https://www.google.com/maps/dir/?api=1&destination=${d.coordenadas.lat},${d.coordenadas.lon}`
   : undefined;
+
+// Datos estructurados: oferta del lote con su lugar (y geo si hay coordenadas).
+// Los lotes de demostración no se publican como oferta real
+const disponibilidad = {
+  disponible: 'https://schema.org/InStock',
+  reservado: 'https://schema.org/OutOfStock',
+  vendido: 'https://schema.org/SoldOut',
+}[d.estado];
+const lugarLd = {
+  '@type': 'Place',
+  name: lugar,
+  address: {
+    '@type': 'PostalAddress',
+    ...(d.vereda && { streetAddress: d.vereda }),
+    addressLocality: d.municipio,
+    addressRegion: d.departamento,
+    addressCountry: 'CO',
+  },
+  ...(d.coordenadas && {
+    geo: { '@type': 'GeoCoordinates', latitude: d.coordenadas.lat, longitude: d.coordenadas.lon },
+  }),
+};
+const fichaLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Product',
+  name: d.nombre,
+  description: d.resumen,
+  category: 'Lote',
+  url: fichaUrl,
+  ...(og && { image: [absoluteUrl(og.src)] }),
+  additionalProperty: [
+    { '@type': 'PropertyValue', name: 'Área total', value: d.area_m2, unitCode: 'MTK' },
+    ...(d.explanacion_m2
+      ? [{ '@type': 'PropertyValue', name: 'Área explanada', value: d.explanacion_m2, unitCode: 'MTK' }]
+      : []),
+  ],
+  offers: {
+    '@type': 'Offer',
+    url: fichaUrl,
+    price: d.precio_cop,
+    priceCurrency: 'COP',
+    availability: disponibilidad,
+    availableAtOrFrom: lugarLd,
+  },
+};
 ---
 
-<Base title={d.nombre} description={descripcion} image={og ? absoluteUrl(og.src) : undefined} imageAlt={d.nombre}>
+<Base
+  title={d.nombre}
+  description={descripcion}
+  image={og ? absoluteUrl(og.src) : undefined}
+  imageAlt={d.nombre}
+  jsonLd={d.demo ? undefined : fichaLd}
+>
   <div class="localbar no-print" slot="localbar">
     <div class="wrap">
       <a class="back" href={url()} aria-label="Volver a los lotes"><Icon name="caret-left" /><span>Lotes</span></a>
