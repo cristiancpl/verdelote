@@ -157,6 +157,7 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
   document.querySelector('[data-reset]')!.addEventListener('click', () => {
     form.reset();
     aplicar();
+    form.querySelector('select')?.focus();
   });
 </script>
 
@@ -257,7 +258,7 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
     width: 36px;
     height: 22px;
     border-radius: 999px;
-    background: var(--line);
+    background: color-mix(in srgb, var(--muted) 55%, var(--surface));
     transition: background 0.2s;
   }
   .knob::after {
