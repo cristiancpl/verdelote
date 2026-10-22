@@ -5,7 +5,7 @@ import Icon from '../components/Icon.astro';
 import LoteCard from '../components/LoteCard.astro';
 import PauseButton from '../components/PauseButton.astro';
 import Base from '../layouts/Base.astro';
-import { formatArea, url } from '../lib/format';
+import { absoluteUrl, formatArea, url } from '../lib/format';
 
 const lotes = (await getCollection('lotes')).sort((a, b) => a.data.orden - b.data.orden);
 const destacado = lotes.find((l) => l.data.destacado);
@@ -15,10 +15,31 @@ const clip = destacado?.data.recorrido.find((c) => c.video);
 const heroSrc = destacado?.data.teaser ?? clip?.video;
 const heroPosterSrc = destacado?.data.teaser ? destacado.data.video_completo?.poster ?? clip?.poster : clip?.poster;
 const poster = heroPosterSrc ? await getImage({ src: heroPosterSrc, width: 1600, format: 'webp' }) : undefined;
+// Vista previa al compartir: portada del lote destacado en 1200x630
+const og = destacado?.data.portada
+  ? await getImage({ src: destacado.data.portada, width: 1200, height: 630, fit: 'cover', format: 'jpg', quality: 78 })
+  : undefined;
+const listado = {
+  '@context': 'https://schema.org',
+  '@type': 'ItemList',
+  name: 'Lotes en Antioquia',
+  numberOfItems: lotes.length,
+  itemListElement: lotes.map((l, i) => ({
+    '@type': 'ListItem',
+    position: i + 1,
+    name: l.data.nombre,
+    url: absoluteUrl(url(`lotes/${l.id}/`)),
+  })),
+};
 const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) => a.localeCompare(b, 'es'));
 ---
 
-<Base>
+<Base
+  description="Lotes en Antioquia con recorrido en video, datos claros y contacto directo con el dueño"
+  image={og ? absoluteUrl(og.src) : undefined}
+  imageAlt={destacado?.data.nombre}
+  jsonLd={listado}
+>
   <section class="hero">
     <div class="hero-copy">
       <h1>Camina el lote antes de visitarlo</h1>

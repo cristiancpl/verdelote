@@ -4,7 +4,7 @@ import { getCollection, type CollectionEntry } from 'astro:content';
 import Icon, { type IconName } from '../../components/Icon.astro';
 import PauseButton from '../../components/PauseButton.astro';
 import Base from '../../layouts/Base.astro';
-import { formatArea, formatPrecio, url } from '../../lib/format';
+import { absoluteUrl, formatArea, formatPrecio, url } from '../../lib/format';
 
 export async function getStaticPaths() {
   const lotes = await getCollection('lotes');
@@ -64,9 +64,15 @@ const grupos = [...Map.groupBy(d.cercanias, (c) => c.minutos ?? 0)]
   .map(([minutos, items]) => ({ minutos, lugares: items.map((i) => i.lugar) }));
 
 const galeriaVisible = d.galeria.slice(0, 5);
+
+// Vista previa al compartir (WhatsApp, redes): portada recortada a 1200x630
+const og = d.portada
+  ? await getImage({ src: d.portada, width: 1200, height: 630, fit: 'cover', format: 'jpg', quality: 78 })
+  : undefined;
+const descripcion = `${formatArea(d.area_m2)} en ${d.municipio}, ${d.departamento} por ${formatPrecio(d.precio_cop)}. ${d.resumen}`;
 ---
 
-<Base title={`${d.nombre} · Verdelote`} description={d.resumen}>
+<Base title={d.nombre} description={descripcion} image={og ? absoluteUrl(og.src) : undefined} imageAlt={d.nombre}>
   <div class="localbar" slot="localbar">
     <div class="wrap">
       <a class="back" href={url()}><Icon name="caret-left" /><span>Lotes</span></a>
@@ -218,7 +224,7 @@ const galeriaVisible = d.galeria.slice(0, 5);
     completo && (
       <section class="block" aria-labelledby="ubicacion-titulo">
         <h2 id="ubicacion-titulo">Ubicación y recorrido</h2>
-        <p class="sub">Del valle de Aburrá a la vereda Mercedes Ábrego, en 1 minuto</p>
+        <p class="sub">Del valle de Aburrá a {d.vereda ? d.vereda.replace(/^Vereda/, 'la vereda') : d.municipio}, en menos de un minuto</p>
         <video
           class="player"
           src={url(completo.src)}

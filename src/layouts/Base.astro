@@ -1,26 +1,64 @@
 ---
 import Icon from '../components/Icon.astro';
-import { url } from '../lib/format';
+import { absoluteUrl, url } from '../lib/format';
 import '../styles/global.css';
 
 interface Props {
+  /** Título de la página sin la marca; se arma como "Título · Verdelote" */
   title?: string;
   description?: string;
+  /** URL absoluta de la imagen para la vista previa al compartir (1200x630) */
+  image?: string;
+  imageAlt?: string;
+  /** Datos estructurados schema.org (uno o varios nodos) */
+  jsonLd?: object | object[];
+  /** Páginas que no deben indexarse ni llevar canónica (404) */
+  noindex?: boolean;
 }
 
+const SITE_NAME = 'Verdelote';
 const {
-  title = 'Verdelote',
-  description = 'Lotes en Antioquia con recorrido virtual',
+  title,
+  description = 'Lotes en Antioquia con recorrido en video, datos claros y contacto directo con el dueño',
+  image = absoluteUrl(url('og-default.png')),
+  imageAlt = 'Verdelote, lotes en Antioquia',
+  jsonLd,
+  noindex = false,
 } = Astro.props;
+
+const fullTitle = title ? `${title} · ${SITE_NAME}` : `${SITE_NAME} · Lotes en Antioquia con recorrido en video`;
+const canonical = absoluteUrl(Astro.url.pathname);
+const nodes = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
+// "<" escapado para que el JSON nunca cierre la etiqueta script
+const ldJson = (node: object) => JSON.stringify(node).replace(/</g, '\\u003c');
 ---
 
-<html lang="es">
+<html lang="es-CO">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
     <meta name="description" content={description} />
+    <meta name="theme-color" content="#fbfbfa" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0f1112" media="(prefers-color-scheme: dark)" />
     <link rel="icon" type="image/svg+xml" href={url('favicon.svg')} />
-    <title>{title}</title>
+    <link rel="apple-touch-icon" href={url('apple-touch-icon.png')} />
+    {noindex ? <meta name="robots" content="noindex" /> : <link rel="canonical" href={canonical} />}
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={SITE_NAME} />
+    <meta property="og:locale" content="es_CO" />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={image} />
+    <meta property="og:image:alt" content={imageAlt} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={fullTitle} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={image} />
+    <meta name="twitter:image:alt" content={imageAlt} />
+    {nodes.map((node) => <script type="application/ld+json" set:html={ldJson(node)} />)}
   </head>
   <body>
     <header class="wrap site-nav">
@@ -36,6 +74,7 @@ const {
     <footer class="wrap site-footer">
       <p>Verdelote · Prototipo</p>
     </footer>
+    <div class="toast" role="status" aria-live="polite" data-toast></div>
   </body>
 </html>
 
@@ -71,5 +110,11 @@ const {
     padding-bottom: 48px;
     color: var(--muted);
     font-size: 0.875rem;
+  }
+  @media print {
+    .site-nav,
+    .site-footer {
+      display: none;
+    }
   }
 </style>
