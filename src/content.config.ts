@@ -34,6 +34,16 @@ const lotes = defineCollection({
         .optional(),
       // Corte corto en bucle para el hero del listado (ruta dentro de public/)
       teaser: z.string().optional(),
+      // Versión vertical (9:16) del recorrido para redes y WhatsApp (ruta dentro de public/)
+      video_vertical: z.string().optional(),
+      // Punto del lote para "Cómo llegar"; aproximadas: true avisa que no es el punto exacto
+      coordenadas: z
+        .object({
+          lat: z.number().min(-90).max(90),
+          lon: z.number().min(-180).max(180),
+          aproximadas: z.boolean().default(true),
+        })
+        .optional(),
       contacto: z
         .object({
           nombre: z.string(),

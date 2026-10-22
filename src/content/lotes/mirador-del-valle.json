@@ -105,6 +105,12 @@
     "duracion": "0:57"
   },
   "teaser": "lotes/mirador-del-valle/teaser.mp4",
+  "video_vertical": "lotes/mirador-del-valle/recorrido-vertical.mp4",
+  "coordenadas": {
+    "lat": 6.407989,
+    "lon": -75.438164,
+    "aproximadas": true
+  },
   "contacto": {
     "nombre": "Andrés",
     "whatsapp": "573216953286"
