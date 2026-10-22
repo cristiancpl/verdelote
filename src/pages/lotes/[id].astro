@@ -77,6 +77,21 @@ const rutaUrl = d.coordenadas
   ? `https://www.google.com/maps/dir/?api=1&destination=${d.coordenadas.lat},${d.coordenadas.lon}`
   : undefined;
 
+// Mensaje listo para pegar en WhatsApp (formato *negrita* de WhatsApp): nombre, tres datos clave, precio y enlace
+const datosClave = cifras
+  .filter((c) => !/^precio/i.test(c.etiqueta))
+  .slice(0, 3)
+  .map((c) => `- ${c.valor} ${c.etiqueta.charAt(0).toLowerCase()}${c.etiqueta.slice(1)}`);
+const mensajeWhatsapp = [
+  `*${d.nombre}*`,
+  `${d.municipio}, ${d.departamento}`,
+  '',
+  ...datosClave,
+  '',
+  `Precio: ${formatPrecio(d.precio_cop)} (${precioM2})`,
+  `Recorrido en video y ficha: ${fichaUrl}`,
+].join('\n');
+
 // Datos estructurados: oferta del lote con su lugar (y geo si hay coordenadas).
 // Los lotes de demostración no se publican como oferta real
 const disponibilidad = {
@@ -398,6 +413,30 @@ const fichaLd = {
     )
   }
 
+  <section class="extras no-print" aria-label="Más opciones">
+    <div class="agents">
+      <h2>Para agentes</h2>
+      <div class="actions">
+        {
+          d.video_vertical && (
+            <a class="btn btn-ghost" href={url(d.video_vertical)} download>
+              <Icon name="download-simple" />
+              Descargar video vertical para redes
+            </a>
+          )
+        }
+        <button type="button" class="btn btn-ghost" data-copy={mensajeWhatsapp} data-copied="Mensaje copiado">
+          <Icon name="copy-simple" />
+          Copiar mensaje para WhatsApp
+        </button>
+      </div>
+    </div>
+    <button type="button" class="btn btn-ghost" data-print>
+      <Icon name="file-pdf" />
+      Descargar ficha (PDF)
+    </button>
+  </section>
+
   {
     whatsappUrl && (
       <div class="bottombar no-print">
@@ -415,11 +454,12 @@ const fichaLd = {
 </Base>
 
 <script>
-  import { initShare } from '../../lib/share';
+  import { initPrint, initShare } from '../../lib/share';
   import { initPauseButtons } from '../../lib/video-controls';
 
   initPauseButtons();
   initShare();
+  initPrint();
 
   // Capítulos: cambian el panel visible del visor y reproducen el video si lo hay
   const root = document.querySelector<HTMLElement>('[data-recorrido]');
@@ -922,6 +962,32 @@ const fichaLd = {
     font-size: 1rem;
   }
 
+  .extras {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 32px 0 56px;
+    border-top: 1px solid var(--line);
+  }
+  .agents h2 {
+    margin-bottom: 12px;
+    color: var(--muted);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    letter-spacing: 0;
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .extras .btn {
+    height: 40px;
+    font-size: 0.875rem;
+  }
+
   @media (max-width: 1100px) {
     .chapters {
       grid-template-columns: repeat(4, 220px);
@@ -990,6 +1056,13 @@ const fichaLd = {
     }
     .cta-top {
       display: none;
+    }
+    .extras .btn {
+      height: auto;
+      min-height: 44px;
+      padding-block: 10px;
+      white-space: normal;
+      text-align: left;
     }
     .bottombar {
       position: fixed;
