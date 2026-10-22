@@ -28,6 +28,12 @@ const lotes = defineCollection({
       portada: image().optional(),
       galeria: z.array(z.object({ src: image(), alt: z.string() })).default([]),
       ubicacion: z.object({ src: image(), alt: z.string() }).optional(),
+      // Recorrido completo (vuelo 3D + lote). src es una ruta dentro de public/
+      video_completo: z
+        .object({ src: z.string(), poster: image(), duracion: z.string() })
+        .optional(),
+      // Corte corto en bucle para el hero del listado (ruta dentro de public/)
+      teaser: z.string().optional(),
       contacto: z
         .object({
           nombre: z.string(),

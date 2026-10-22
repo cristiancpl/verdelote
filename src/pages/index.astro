@@ -11,7 +11,10 @@ const lotes = (await getCollection('lotes')).sort((a, b) => a.data.orden - b.dat
 const destacado = lotes.find((l) => l.data.destacado);
 const resto = lotes.filter((l) => l !== destacado);
 const clip = destacado?.data.recorrido.find((c) => c.video);
-const poster = clip ? await getImage({ src: clip.poster, width: 1600, format: 'webp' }) : undefined;
+// Hero: el teaser del lote si existe; si no, el clip de C3
+const heroSrc = destacado?.data.teaser ?? clip?.video;
+const heroPosterSrc = destacado?.data.teaser ? destacado.data.video_completo?.poster ?? clip?.poster : clip?.poster;
+const poster = heroPosterSrc ? await getImage({ src: heroPosterSrc, width: 1600, format: 'webp' }) : undefined;
 const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) => a.localeCompare(b, 'es'));
 ---
 
@@ -33,10 +36,10 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
       </div>
     </div>
     {
-      destacado && clip && poster && (
+      destacado && heroSrc && poster && (
         <figure>
           <div class="stage">
-            <video id="hero-video" src={url(clip.video)} poster={poster.src} autoplay muted loop playsinline />
+            <video id="hero-video" src={url(heroSrc)} poster={poster.src} autoplay muted loop playsinline />
             <PauseButton videoId="hero-video" />
           </div>
           <figcaption>

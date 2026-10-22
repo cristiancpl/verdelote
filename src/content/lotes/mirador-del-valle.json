@@ -99,6 +99,12 @@
       "alt": "Vía de acceso bajo un árbol grande"
     }
   ],
+  "video_completo": {
+    "src": "lotes/mirador-del-valle/recorrido-completo.mp4",
+    "poster": "../../assets/lotes/mirador-del-valle/recorrido-poster.jpg",
+    "duracion": "0:57"
+  },
+  "teaser": "lotes/mirador-del-valle/teaser.mp4",
   "contacto": {
     "nombre": "Andrés",
     "whatsapp": "573216953286"

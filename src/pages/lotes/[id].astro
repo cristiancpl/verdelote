@@ -33,6 +33,14 @@ const capitulos = await Promise.all(
 );
 const inicial = Math.max(0, capitulos.findIndex((c) => c.video));
 
+// Recorrido completo (opcional): poster optimizado para el reproductor
+const completo = d.video_completo
+  ? {
+      ...d.video_completo,
+      posterUrl: (await getImage({ src: d.video_completo.poster, width: 1600, format: 'webp' })).src,
+    }
+  : undefined;
+
 const cifras = d.cifras ?? [
   { valor: formatArea(d.area_m2), etiqueta: 'Área total' },
   ...(d.explanacion_m2 ? [{ valor: formatArea(d.explanacion_m2), etiqueta: 'Explanados' }] : []),
@@ -207,7 +215,25 @@ const galeriaVisible = d.galeria.slice(0, 5);
   }
 
   {
-    !d.demo && d.galeria.length > 0 && (
+    completo && (
+      <section class="block" aria-labelledby="ubicacion-titulo">
+        <h2 id="ubicacion-titulo">Ubicación y recorrido</h2>
+        <p class="sub">Del valle de Aburrá a la vereda Mercedes Ábrego, en 1 minuto</p>
+        <video
+          class="player"
+          src={url(completo.src)}
+          poster={completo.posterUrl}
+          controls
+          playsinline
+          preload="none"
+          aria-label={`Ubicación y recorrido, ${completo.duracion}`}
+        />
+      </section>
+    )
+  }
+
+  {
+    !completo && !d.demo && d.galeria.length > 0 && (
       <section class="block">
         <h2>Ubicación</h2>
         <div class="map">
@@ -579,6 +605,20 @@ const galeriaVisible = d.galeria.slice(0, 5);
     border-radius: 999px;
     background: var(--surface);
     font-size: 0.9375rem;
+  }
+
+  .block > .sub {
+    margin: -12px 0 28px;
+    color: var(--muted);
+    font-size: 1.125rem;
+  }
+  .player {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border-radius: var(--radius);
+    background: var(--surface);
+    object-fit: cover;
   }
 
   .map {
