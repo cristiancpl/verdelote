@@ -5,19 +5,39 @@ import Icon from '../components/Icon.astro';
 import LoteCard from '../components/LoteCard.astro';
 import PauseButton from '../components/PauseButton.astro';
 import Base from '../layouts/Base.astro';
-import { absoluteUrl, formatArea, url } from '../lib/format';
+import { absoluteUrl, formatArea, formatPrecio, formatPrecioCorto, formatPrecioM2, nombreCorto, url } from '../lib/format';
+import { primerClip } from '../lib/lote';
 
 const lotes = (await getCollection('lotes')).sort((a, b) => a.data.orden - b.data.orden);
 const destacado = lotes.find((l) => l.data.destacado);
+const d = destacado?.data;
 const resto = lotes.filter((l) => l !== destacado);
-const clip = destacado?.data.recorrido.find((c) => c.video);
-// Hero: el teaser del lote si existe; si no, el clip de C3
-const heroSrc = destacado?.data.teaser ?? clip?.video;
-const heroPosterSrc = destacado?.data.teaser ? destacado.data.video_completo?.poster ?? clip?.poster : clip?.poster;
-const poster = heroPosterSrc ? await getImage({ src: heroPosterSrc, width: 1600, format: 'webp' }) : undefined;
+const fichaUrl = destacado ? url(`lotes/${destacado.id}/`) : undefined;
+
+// Hero: el vuelo del lote destacado (sin bucle); si no hay vuelo, su teaser o primer clip como antes
+const vuelo = d?.vuelo;
+const clip = d ? primerClip(d) : undefined;
+const heroSrc = vuelo?.src ?? d?.teaser ?? clip?.video ?? clip?.src;
+const modo = !destacado || !heroSrc ? 'estatico' : vuelo ? 'vuelo' : 'teaser';
+const heroPosterSrc = vuelo?.poster ?? (d?.teaser ? (d.video_completo?.poster ?? clip?.poster) : clip?.poster);
+const heroPoster = heroPosterSrc ? (await getImage({ src: heroPosterSrc, width: 1920, format: 'webp' })).src : undefined;
+const heroFinal = vuelo ? (await getImage({ src: vuelo.final, width: 1920, format: 'webp' })).src : undefined;
+const etapas = vuelo
+  ? vuelo.etapas.map((e, i) => ({ nombre: e.nombre, a: e.desde_s, b: vuelo.etapas[i + 1]?.desde_s ?? vuelo.duracion_s }))
+  : [];
+
+// Bloque "Destacado": clip en bucle del lote, y cuatro datos tomados de sus cifras y su precio
+const clipPoster = clip ? (await getImage({ src: clip.poster, width: 1400, format: 'webp' })).src : undefined;
+const datos = d
+  ? [
+      ...(d.cifras ?? [{ valor: formatArea(d.area_m2), etiqueta: 'Área total' }]).slice(0, 3).map((c) => ({ valor: c.valor, etiqueta: c.etiqueta })),
+      { valor: formatPrecioCorto(d.precio_cop), etiqueta: formatPrecioM2(d.precio_cop, d.area_m2) },
+    ]
+  : [];
+
 // Vista previa al compartir: portada del lote destacado en 1200x630
-const og = destacado?.data.portada
-  ? await getImage({ src: destacado.data.portada, width: 1200, height: 630, fit: 'cover', format: 'jpg', quality: 78 })
+const og = d?.portada
+  ? await getImage({ src: d.portada, width: 1200, height: 630, fit: 'cover', format: 'jpg', quality: 78 })
   : undefined;
 const listado = {
   '@context': 'https://schema.org',
@@ -35,79 +55,203 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
 ---
 
 <Base
+  nav="overlay"
   description="Lotes en Antioquia con recorrido en video, datos claros y contacto directo con el dueño"
   image={og ? absoluteUrl(og.src) : undefined}
-  imageAlt={destacado?.data.nombre}
+  imageAlt={d?.nombre}
   jsonLd={listado}
 >
-  <section class="hero">
-    <div class="hero-copy">
-      <h1>Camina el lote antes de visitarlo</h1>
-      <p>Lotes en Antioquia con recorrido en video, datos claros y contacto directo con el dueño</p>
-      <div class="actions">
-        {
-          destacado && (
-            <a class="btn btn-primary" href={url(`lotes/${destacado.id}/`)}>
-              <Icon name="play" />
-              Ver recorrido
-            </a>
-          )
-        }
-        <a class="btn btn-ghost" href="#lotes">Explorar lotes</a>
-      </div>
-    </div>
+  {
+    destacado && (
+      <a slot="nav-right" class="btn btn-glass btn-sm" href={fichaUrl}>
+        <span class="lg">Ver {nombreCorto(destacado.data.nombre)}</span>
+        <span class="sm">Ver el lote</span>
+      </a>
+    )
+  }
+
+  <section
+    class:list={['stage', 'hero', { llegada: modo !== 'vuelo', sobrio: modo === 'estatico' }]}
+    id="hero"
+    data-stage
+    data-modo={modo}
+    aria-label={modo === 'vuelo' ? 'Vuelo hasta el lote' : 'Portada'}
+  >
     {
-      destacado && heroSrc && poster && (
-        <figure>
-          <div class="stage">
-            <video id="hero-video" src={url(heroSrc)} poster={poster.src} autoplay muted loop playsinline />
-            <PauseButton videoId="hero-video" />
-          </div>
-          <figcaption>
-            <strong>{destacado.data.nombre}</strong>
-            <span class="muted">
-              {destacado.data.municipio} · {formatArea(destacado.data.area_m2)}
-            </span>
-          </figcaption>
-        </figure>
+      modo !== 'estatico' && (
+        <video
+          id="hero-video"
+          src={url(heroSrc!)}
+          poster={heroPoster}
+          muted
+          playsinline
+          loop={modo === 'teaser'}
+          autoplay={modo === 'teaser'}
+          preload={modo === 'vuelo' ? 'metadata' : 'auto'}
+          data-duracion={vuelo?.duracion_s}
+          data-inicio={heroPoster}
+          data-final={heroFinal}
+          aria-hidden="true"
+        />
       )
     }
+    {modo === 'estatico' && <div class="bg bg-sobrio"></div>}
+
+    <div class="intro" data-intro>
+      <h1>Encuentra tu lugar<br />en la montaña</h1>
+      <p>Lotes en Antioquia que puedes recorrer antes de visitarlos</p>
+    </div>
+
+    {
+      modo !== 'estatico' && (
+        <div class="ctl">
+          <PauseButton videoId="hero-video" />
+        </div>
+      )
+    }
+
+    <div class="stage-ui">
+      <div class="wrap">
+        {
+          destacado && d ? (
+            <div class="arrive" data-arrive>
+              <div>
+                <h2>{d.nombre}</h2>
+                <div class="meta">
+                  <span>
+                    <Icon name="map-pin" />
+                    {d.municipio}, {d.departamento}
+                  </span>
+                  <span>{formatArea(d.area_m2)}</span>
+                  <span>{formatPrecio(d.precio_cop)}</span>
+                </div>
+              </div>
+              <div class="actions">
+                {modo === 'vuelo' ? (
+                  <button type="button" class="btn btn-glass" data-repetir>
+                    <Icon name="arrow-counter-clockwise" />
+                    Ver de nuevo
+                  </button>
+                ) : (
+                  <a class="btn btn-glass" href="#lotes">Explorar lotes</a>
+                )}
+                <a class="btn btn-light" href={fichaUrl}>Conocer el lote</a>
+              </div>
+            </div>
+          ) : (
+            <div class="arrive solo">
+              <div class="actions">
+                <a class="btn btn-light" href="#lotes">Explorar lotes</a>
+              </div>
+            </div>
+          )
+        }
+        {
+          etapas.length > 0 && (
+            <div class="journey" style={`--n:${etapas.length}`} aria-hidden="true" data-journey>
+              {etapas.map((e) => (
+                <div data-a={e.a} data-b={e.b}>
+                  {e.nombre}
+                </div>
+              ))}
+            </div>
+          )
+        }
+      </div>
+    </div>
   </section>
 
-  <section id="lotes" aria-label="Lotes disponibles">
-    <form class="toolbar" aria-label="Filtrar lotes" data-filtros>
-      <div class="field">
-        <label for="f-municipio">Municipio</label>
-        <select id="f-municipio" name="municipio">
-          <option value="">Todos</option>
-          {municipios.map((m) => <option value={m}>{m}</option>)}
-        </select>
+  {
+    destacado && d && (
+      <section class="band wrap" aria-label="Lote destacado">
+        <div class="featured reveal">
+          <div class="media">
+            <a class="mlink" href={fichaUrl}>
+              <span class="sr-only">Conocer {d.nombre}</span>
+              {clip && clipPoster ? (
+                <video
+                  id="feat-video"
+                  src={url(clip.src)}
+                  poster={clipPoster}
+                  muted
+                  loop
+                  playsinline
+                  preload="none"
+                  aria-hidden="true"
+                />
+              ) : (
+                <div class="bg-sobrio fill"></div>
+              )}
+              {clip && (
+                <span class="tag">
+                  <Icon name="play-circle" />
+                  Recorrido en video
+                </span>
+              )}
+            </a>
+            {clip && clipPoster && <PauseButton videoId="feat-video" />}
+          </div>
+          <div class="info">
+            <p class="eyebrow">Destacado</p>
+            <h2 class="h-lg">{nombreCorto(d.nombre)}</h2>
+            <p class="lead">{d.resumen}</p>
+            <div class="facts">
+              {datos.map((x) => (
+                <div>
+                  <strong>{x.valor}</strong>
+                  <span>{x.etiqueta}</span>
+                </div>
+              ))}
+            </div>
+            <a class="btn btn-primary" href={fichaUrl}>
+              Conocer el lote
+              <Icon name="arrow-right" />
+            </a>
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  <section class="wrap lotes" id="lotes" aria-label="Lotes disponibles">
+    <div class="toolbar">
+      <div class="thead">
+        <h2>Más lotes en Antioquia</h2>
+        <output class="count" aria-live="polite" data-count>{resto.length === 1 ? '1 lote' : `${resto.length} lotes`}</output>
       </div>
-      <div class="field">
-        <label for="f-area">Área</label>
-        <select id="f-area" name="area">
-          <option value="">Cualquier área</option>
-          <option value="0-2500">Hasta 2.500 m²</option>
-          <option value="2500-5000">2.500 a 5.000 m²</option>
-          <option value="5000-">Más de 5.000 m²</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="f-precio">Precio máximo</label>
-        <select id="f-precio" name="precio">
-          <option value="">Sin límite</option>
-          <option value="200000000">$200.000.000</option>
-          <option value="300000000">$300.000.000</option>
-          <option value="400000000">$400.000.000</option>
-        </select>
-      </div>
-      <label class="switch">
-        <input type="checkbox" name="recorrido" />
-        <span class="knob" aria-hidden="true"></span>
-        Solo con recorrido
-      </label>
-      <output class="count" aria-live="polite" data-count>{lotes.length} lotes</output>
-    </form>
+      <form class="filters" aria-label="Filtrar lotes" data-filtros>
+        <div class="field">
+          <label for="f-municipio">Municipio</label>
+          <select id="f-municipio" name="municipio">
+            <option value="">Todos</option>
+            {municipios.map((m) => <option value={m}>{m}</option>)}
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-area">Área</label>
+          <select id="f-area" name="area">
+            <option value="">Cualquier área</option>
+            <option value="0-2500">Hasta 2.500 m²</option>
+            <option value="2500-5000">2.500 a 5.000 m²</option>
+            <option value="5000-">Más de 5.000 m²</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-precio">Precio máximo</label>
+          <select id="f-precio" name="precio">
+            <option value="">Sin límite</option>
+            <option value="200000000">$200.000.000</option>
+            <option value="300000000">$300.000.000</option>
+            <option value="400000000">$400.000.000</option>
+          </select>
+        </div>
+        <label class="switch">
+          <input type="checkbox" name="recorrido" />
+          <span class="knob" aria-hidden="true"></span>
+          Solo con recorrido
+        </label>
+      </form>
+    </div>
 
     <div class="grid">
       {destacado && <LoteCard lote={destacado} featured />}
@@ -125,7 +269,96 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
   import { initPauseButtons } from '../lib/video-controls';
 
   initPauseButtons();
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+  // Navegación transparente sobre el vuelo y sólida al pasar la portada
+  const stage = document.querySelector<HTMLElement>('[data-stage]')!;
+  const nav = document.querySelector<HTMLElement>('[data-nav]')!;
+  new IntersectionObserver(([e]) => nav.classList.toggle('solid', !e.isIntersecting), {
+    rootMargin: '-64px 0px 0px 0px',
+  }).observe(stage);
+
+  // Vuelo: frase de entrada, tarjeta de llegada y línea de etapas siguen el tiempo del video.
+  // Solo hay requestAnimationFrame mientras el video corre; no hay listeners de scroll
+  const v = document.getElementById('hero-video') as HTMLVideoElement | null;
+  if (v && stage.dataset.modo === 'vuelo') {
+    const dur = Number(v.dataset.duracion);
+    const pasos = [...stage.querySelectorAll<HTMLElement>('[data-journey] > div')];
+    const pintar = (t: number, fin = false) => {
+      stage.classList.toggle('intro-out', fin || t > 6.5);
+      stage.classList.toggle('llegada', fin || t > dur - 4.5);
+      for (const p of pasos) {
+        const a = Number(p.dataset.a);
+        const b = Number(p.dataset.b);
+        const avance = fin ? 1 : Math.max(0, Math.min(1, (t - a) / (b - a)));
+        p.style.setProperty('--p', `${avance * 100}%`);
+        p.classList.toggle('on', fin || t >= a);
+      }
+    };
+    const sync = () => pintar(v.currentTime, v.ended);
+    let raf = 0;
+    const bucle = () => {
+      sync();
+      if (!v.paused && !v.ended) raf = requestAnimationFrame(bucle);
+    };
+    v.addEventListener('play', () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(bucle);
+    });
+    for (const ev of ['pause', 'ended', 'seeked']) v.addEventListener(ev, sync);
+
+    // Sin video (movimiento reducido, reproducción bloqueada o sin soporte): cuadro final con la tarjeta visible
+    const mostrarFinal = () => {
+      if (v.dataset.final) v.poster = v.dataset.final;
+      pintar(dur, true);
+    };
+    v.addEventListener('error', mostrarFinal);
+
+    if (reduce) {
+      v.pause();
+      mostrarFinal();
+    } else {
+      v.preload = 'auto';
+      v.play().catch(mostrarFinal);
+    }
+
+    document.querySelector('[data-repetir]')?.addEventListener('click', () => {
+      if (v.dataset.inicio) v.poster = v.dataset.inicio;
+      v.currentTime = 0;
+      pintar(0);
+      v.play().catch(mostrarFinal);
+    });
+  }
+
+  // Clip del bloque destacado: solo suena el movimiento cuando se ve y nadie lo pausó
+  const fv = document.getElementById('feat-video') as HTMLVideoElement | null;
+  if (fv) {
+    let manual = reduce;
+    document
+      .querySelector('[data-pause-for="feat-video"]')
+      ?.addEventListener('click', () => (manual = fv.paused));
+    new IntersectionObserver(
+      ([e]) => {
+        if (!e.isIntersecting) fv.pause();
+        else if (!manual) fv.play().catch(() => undefined);
+      },
+      { threshold: 0.35 },
+    ).observe(fv);
+  }
+
+  const reveal = new IntersectionObserver(
+    (es) =>
+      es.forEach((e) => {
+        if (!e.isIntersecting) return;
+        e.target.classList.add('in');
+        reveal.unobserve(e.target);
+      }),
+    { threshold: 0.2 },
+  );
+  document.querySelectorAll('.reveal').forEach((el) => reveal.observe(el));
+
+  // Filtros. La tarjeta del lote destacado vive en la grilla oculta: solo aparece si hay filtros activos y coincide,
+  // así "solo con recorrido" o un municipio encuentran el destacado aunque ya se vea arriba
   const form = document.querySelector<HTMLFormElement>('[data-filtros]')!;
   const cards = [...document.querySelectorAll<HTMLElement>('[data-lote]')];
   const count = document.querySelector<HTMLOutputElement>('[data-count]')!;
@@ -134,18 +367,22 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
   function aplicar() {
     const f = new FormData(form);
     const municipio = String(f.get('municipio') ?? '');
-    const [areaMin, areaMax] = String(f.get('area') ?? '').split('-').map((v) => (v ? Number(v) : undefined));
-    const precioMax = Number(f.get('precio')) || Infinity;
+    const areaSel = String(f.get('area') ?? '');
+    const precioSel = String(f.get('precio') ?? '');
     const soloRecorrido = f.get('recorrido') === 'on';
+    const activos = Boolean(municipio || areaSel || precioSel || soloRecorrido);
+    const [areaMin, areaMax] = areaSel.split('-').map((x) => (x ? Number(x) : undefined));
+    const precioMax = Number(precioSel) || Infinity;
     let visibles = 0;
     for (const card of cards) {
       const area = Number(card.dataset.area);
-      const ok =
+      const coincide =
         (!municipio || card.dataset.municipio === municipio) &&
         (areaMin === undefined || area >= areaMin) &&
         (areaMax === undefined || area < areaMax) &&
         Number(card.dataset.precio) <= precioMax &&
         (!soloRecorrido || card.dataset.recorrido === '1');
+      const ok = coincide && (activos || !('featured' in card.dataset));
       card.hidden = !ok;
       if (ok) visibles++;
     }
@@ -162,61 +399,202 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
 </script>
 
 <style>
-  .hero {
+  .lg {
+    display: inline;
+  }
+  .sm {
+    display: none;
+  }
+
+  /* Portada: lado derecho libre para la marca de Google Earth del video */
+  .intro {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
     display: grid;
-    grid-template-columns: 1fr 1.3fr;
-    gap: 56px;
+    place-content: center;
+    padding: 0 var(--gutter);
+    text-align: center;
+    text-shadow: 0 2px 36px rgb(0 0 0 / 0.5);
+    transition: opacity 1.2s var(--ease);
+  }
+  .intro h1 {
+    font-size: clamp(2.5rem, 6.6vw, 6.5rem);
+    line-height: 0.98;
+  }
+  .intro p {
+    margin-top: 18px;
+    font-size: clamp(1.0625rem, 1.9vw, 1.375rem);
+    color: rgb(255 255 255 / 0.85);
+  }
+  .intro-out .intro {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .ctl {
+    position: absolute;
+    right: var(--gutter);
+    top: calc(var(--nav-h) + 24px);
+    z-index: 3;
+  }
+  .ctl :global(.pause) {
+    position: static;
+  }
+
+  .arrive {
+    display: grid;
+    gap: 22px;
+    max-width: 760px;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(18px);
+    transition: opacity 0.9s var(--ease), transform 0.9s var(--ease), visibility 0s 0.9s;
+  }
+  .llegada .arrive {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    transition: opacity 0.9s var(--ease), transform 0.9s var(--ease), visibility 0s;
+  }
+  .arrive h2 {
+    font-size: clamp(2.2rem, 5vw, 4.5rem);
+    line-height: 1;
+  }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 22px;
+    margin-top: 14px;
+    font-size: 1.125rem;
+    color: rgb(255 255 255 / 0.88);
+  }
+  .meta span {
+    display: inline-flex;
     align-items: center;
-    padding: 40px 0 72px;
-  }
-  h1 {
-    font-size: clamp(2.5rem, 4vw, 3.5rem);
-    line-height: 1.04;
-  }
-  .hero-copy p {
-    max-width: 30ch;
-    margin: 20px 0 32px;
-    color: var(--muted);
-    font-size: 1.1875rem;
+    gap: 6px;
   }
   .actions {
     display: flex;
     flex-wrap: wrap;
     gap: 12px;
   }
-  figure {
-    margin: 0;
+
+  .journey {
+    display: grid;
+    grid-template-columns: repeat(var(--n), 1fr);
+    gap: 8px;
+    max-width: 74%;
+    margin-top: 36px;
   }
-  .stage {
+  .journey div {
+    font-size: 0.8125rem;
+    color: rgb(255 255 255 / 0.6);
+    transition: color 0.4s;
+  }
+  .journey div::before {
+    content: '';
+    display: block;
+    height: 3px;
+    margin-bottom: 10px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #fff var(--p, 0%), rgb(255 255 255 / 0.22) var(--p, 0%));
+  }
+  .journey div.on {
+    color: #fff;
+  }
+
+  /* Destacado */
+  .featured {
+    display: grid;
+    grid-template-columns: 1.35fr 1fr;
+    gap: 56px;
+    align-items: center;
+  }
+  .media {
     position: relative;
-    aspect-ratio: 16 / 10;
     border-radius: var(--radius);
     overflow: hidden;
-    background: var(--surface);
+    aspect-ratio: 16 / 10;
+    background: var(--card);
   }
-  .stage video {
+  .mlink {
+    position: absolute;
+    inset: 0;
+    display: block;
+  }
+  .media video,
+  .media .fill {
     width: 100%;
     height: 100%;
     object-fit: cover;
   }
-  figcaption {
-    display: flex;
-    justify-content: space-between;
-    gap: 16px;
-    margin-top: 14px;
-    font-size: 0.9375rem;
+  .tag {
+    position: absolute;
+    left: 18px;
+    top: 18px;
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgb(0 0 0 / 0.55);
+    font-size: 0.8125rem;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
   }
-  figcaption strong {
-    font-weight: 500;
+  .info .lead {
+    max-width: 40ch;
+    margin-top: 22px;
+    color: var(--muted);
+    font-size: clamp(1.125rem, 1.6vw, 1.375rem);
+    line-height: 1.4;
+  }
+  .facts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 26px 32px;
+    margin: 34px 0;
+  }
+  .facts strong {
+    display: block;
+    font-size: clamp(1.6rem, 2.2vw, 2rem);
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+  }
+  .facts span {
+    color: var(--muted);
   }
 
+  /* Lotes y filtros */
+  .lotes {
+    scroll-margin-top: 24px;
+  }
   .toolbar {
     display: flex;
     flex-wrap: wrap;
     align-items: end;
-    gap: 16px;
-    padding: 24px 0 32px;
+    gap: 20px 16px;
+    padding: 36px 0;
     border-top: 1px solid var(--line);
+  }
+  .thead {
+    display: grid;
+    gap: 4px;
+    margin-right: auto;
+  }
+  .thead h2 {
+    font-size: clamp(1.75rem, 2.6vw, 2.25rem);
+  }
+  .count {
+    color: var(--muted);
+    font-size: 0.9375rem;
+  }
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 14px;
   }
   .field {
     display: grid;
@@ -227,12 +605,12 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
     font-size: 0.8125rem;
   }
   select {
-    height: 44px;
-    min-width: 190px;
+    height: 46px;
+    min-width: 170px;
     padding: 0 14px;
-    border: 1px solid var(--line);
+    border: 1px solid rgb(255 255 255 / 0.18);
     border-radius: 999px;
-    background: var(--bg);
+    background: var(--bg-2);
     color: var(--text);
     font: inherit;
     font-size: 0.9375rem;
@@ -241,10 +619,10 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
     display: flex;
     align-items: center;
     gap: 10px;
-    height: 44px;
+    height: 46px;
     padding: 0 16px;
     border-radius: 999px;
-    background: var(--surface);
+    background: var(--card);
     font-size: 0.9375rem;
     cursor: pointer;
   }
@@ -258,7 +636,7 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
     width: 36px;
     height: 22px;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--muted) 55%, var(--surface));
+    background: #4a5050;
     transition: background 0.2s;
   }
   .knob::after {
@@ -270,7 +648,6 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
     height: 16px;
     border-radius: 50%;
     background: #fff;
-    box-shadow: 0 1px 2px rgb(22 24 26 / 0.2);
     transition: transform 0.2s var(--ease);
   }
   .switch input:checked + .knob {
@@ -283,68 +660,74 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
     outline: 2px solid var(--accent);
     outline-offset: 3px;
   }
-  .count {
-    margin-left: auto;
-    align-self: center;
-    color: var(--muted);
-    font-size: 0.9375rem;
-  }
-
   .grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 40px 28px;
-    padding-bottom: 64px;
+    gap: 40px 24px;
+    padding-bottom: 96px;
   }
   .empty {
     display: grid;
     justify-items: start;
     gap: 16px;
-    padding: 48px 0 96px;
+    padding: 24px 0 120px;
     color: var(--muted);
     font-size: 1.125rem;
   }
   .empty[hidden] {
     display: none;
   }
-  .empty p {
-    margin: 0;
-  }
 
   @media (max-width: 1100px) {
-    .hero {
-      grid-template-columns: 1fr 1fr;
-      gap: 36px;
+    .featured {
+      grid-template-columns: 1fr;
+      gap: 32px;
     }
     .grid {
       grid-template-columns: repeat(2, 1fr);
     }
-    select {
-      min-width: 160px;
+    .ctl {
+      right: var(--gutter);
     }
   }
-  @media (max-width: 860px) {
-    .hero {
-      grid-template-columns: 1fr;
+  @media (max-width: 700px) {
+    .lg {
+      display: none;
     }
-    .hero-copy p {
-      max-width: 44ch;
+    .sm {
+      display: inline;
     }
-    .count {
-      margin-left: 0;
-      width: 100%;
+    .journey {
+      max-width: 100%;
+      margin-top: 28px;
+      gap: 6px;
     }
-  }
-  @media (max-width: 600px) {
+    .journey div {
+      font-size: 0.6875rem;
+    }
+    .meta {
+      font-size: 1rem;
+    }
     .grid {
       grid-template-columns: 1fr;
+      padding-bottom: 72px;
     }
-    select {
-      min-width: 0;
+    .filters,
+    .field {
       width: 100%;
     }
     .field {
       flex: 1 1 100%;
+    }
+    select {
+      width: 100%;
+      min-width: 0;
+    }
+    .switch {
+      width: 100%;
+    }
+    .facts {
+      gap: 22px 20px;
     }
   }
 </style>

@@ -1,23 +1,27 @@
 ---
 import { Image } from 'astro:assets';
 import type { CollectionEntry } from 'astro:content';
-import { formatArea, formatPrecio, url } from '../lib/format';
+import { formatArea, formatPrecio, nombreCorto, url } from '../lib/format';
+import { tieneRecorrido } from '../lib/lote';
 import Icon from './Icon.astro';
 
 interface Props {
   lote: CollectionEntry<'lotes'>;
+  /** Lote destacado: la tarjeta existe para los filtros y se oculta mientras no haya filtros activos */
   featured?: boolean;
 }
 
 const { lote, featured = false } = Astro.props;
 const d = lote.data;
-const conRecorrido = d.recorrido.some((c) => c.video);
+const conRecorrido = tieneRecorrido(d);
 ---
 
 <a
-  class:list={['card', { featured }]}
+  class="card"
   href={url(`lotes/${lote.id}/`)}
   data-lote
+  data-featured={featured ? '' : undefined}
+  hidden={featured}
   data-municipio={d.municipio}
   data-area={d.area_m2}
   data-precio={d.precio_cop}
@@ -26,12 +30,7 @@ const conRecorrido = d.recorrido.some((c) => c.video);
   {
     d.portada ? (
       <div class="img">
-        <Image
-          src={d.portada}
-          alt={d.nombre}
-          widths={featured ? [800, 1400] : [480, 800]}
-          sizes={featured ? '(max-width: 1100px) 100vw, 820px' : '(max-width: 1100px) 50vw, 400px'}
-        />
+        <Image src={d.portada} alt={d.nombre} widths={[480, 800]} sizes="(max-width: 700px) 100vw, (max-width: 1100px) 50vw, 400px" />
       </div>
     ) : (
       <div class="img noimg">
@@ -41,7 +40,7 @@ const conRecorrido = d.recorrido.some((c) => c.video);
     )
   }
   <div class="meta">
-    <h3>{d.nombre}</h3>
+    <h3>{nombreCorto(d.nombre)}</h3>
     <span class="price">{formatPrecio(d.precio_cop)}</span>
   </div>
   <div class="sub">
@@ -57,6 +56,7 @@ const conRecorrido = d.recorrido.some((c) => c.video);
   .card {
     display: flex;
     flex-direction: column;
+    border-radius: var(--radius);
   }
   .card[hidden] {
     display: none;
@@ -65,40 +65,26 @@ const conRecorrido = d.recorrido.some((c) => c.video);
     border-radius: var(--radius);
     overflow: hidden;
     aspect-ratio: 4 / 3;
-    background: var(--surface);
+    background: var(--card);
   }
   .img img {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transition: transform 0.6s var(--ease);
+    transition: transform 0.8s var(--ease);
   }
   .card:hover .img img {
-    transform: scale(1.03);
-  }
-  .featured {
-    grid-column: span 2;
-    grid-row: span 2;
-  }
-  .featured .img {
-    position: relative;
-    aspect-ratio: auto;
-    flex: 1;
-    min-height: 360px;
-  }
-  .featured .img img {
-    position: absolute;
-    inset: 0;
-    object-position: center 60%;
+    transform: scale(1.04);
   }
   .meta {
     display: flex;
     justify-content: space-between;
     gap: 16px;
-    margin-top: 16px;
+    margin-top: 14px;
   }
   h3 {
-    font-size: 1.1875rem;
+    font-size: 1.125rem;
+    letter-spacing: -0.02em;
   }
   .price {
     font-weight: 500;
@@ -108,8 +94,8 @@ const conRecorrido = d.recorrido.some((c) => c.video);
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px 16px;
-    margin-top: 4px;
+    gap: 6px 12px;
+    margin-top: 2px;
     color: var(--muted);
     font-size: 0.9375rem;
   }
@@ -124,27 +110,9 @@ const conRecorrido = d.recorrido.some((c) => c.video);
     font-weight: 500;
   }
   .demo {
-    padding: 1px 10px;
+    padding: 0 10px;
     border: 1px solid var(--line);
     border-radius: 999px;
-    font-size: 0.8125rem;
-  }
-  @media (max-width: 1100px) {
-    .featured {
-      grid-row: auto;
-    }
-    .featured .img {
-      aspect-ratio: 16 / 9;
-      flex: none;
-      min-height: 0;
-    }
-    .featured .img img {
-      position: static;
-    }
-  }
-  @media (max-width: 600px) {
-    .featured {
-      grid-column: auto;
-    }
+    font-size: 0.75rem;
   }
 </style>
