@@ -19,3 +19,21 @@ export function initPauseButtons(root: ParentNode = document) {
     sync();
   });
 }
+
+/** Reproduce el video solo mientras su contenedor se ve y nadie lo pausó a mano.
+ *  Llamar después de initPauseButtons: así el botón de pausa ya cambió el estado cuando se lee video.paused */
+export function playWhenVisible(video: HTMLVideoElement, target: Element = video, threshold = 0.35) {
+  let manual = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (video.id) {
+    document
+      .querySelector(`[data-pause-for="${video.id}"]`)
+      ?.addEventListener('click', () => (manual = video.paused));
+  }
+  new IntersectionObserver(
+    ([e]) => {
+      if (!e.isIntersecting) video.pause();
+      else if (!manual) video.play().catch(() => undefined);
+    },
+    { threshold },
+  ).observe(target);
+}

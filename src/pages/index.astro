@@ -266,7 +266,7 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
 </Base>
 
 <script>
-  import { initPauseButtons } from '../lib/video-controls';
+  import { initPauseButtons, playWhenVisible } from '../lib/video-controls';
 
   initPauseButtons();
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -330,21 +330,9 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
     });
   }
 
-  // Clip del bloque destacado: solo suena el movimiento cuando se ve y nadie lo pausó
+  // Clip del bloque destacado: solo se mueve cuando se ve y nadie lo pausó
   const fv = document.getElementById('feat-video') as HTMLVideoElement | null;
-  if (fv) {
-    let manual = reduce;
-    document
-      .querySelector('[data-pause-for="feat-video"]')
-      ?.addEventListener('click', () => (manual = fv.paused));
-    new IntersectionObserver(
-      ([e]) => {
-        if (!e.isIntersecting) fv.pause();
-        else if (!manual) fv.play().catch(() => undefined);
-      },
-      { threshold: 0.35 },
-    ).observe(fv);
-  }
+  if (fv) playWhenVisible(fv);
 
   const reveal = new IntersectionObserver(
     (es) =>

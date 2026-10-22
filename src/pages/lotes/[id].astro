@@ -4,7 +4,8 @@ import { getCollection, type CollectionEntry } from 'astro:content';
 import Icon, { type IconName } from '../../components/Icon.astro';
 import PauseButton from '../../components/PauseButton.astro';
 import Base from '../../layouts/Base.astro';
-import { absoluteUrl, formatArea, formatPrecio, formatPrecioM2, formatTelefono, url } from '../../lib/format';
+import { absoluteUrl, formatArea, formatPrecio, formatPrecioM2, formatTelefono, nombreCorto, url } from '../../lib/format';
+import { primerClip } from '../../lib/lote';
 
 export async function getStaticPaths() {
   const lotes = await getCollection('lotes');
@@ -18,28 +19,46 @@ interface Props {
 const { lote } = Astro.props;
 const d = lote.data;
 const lugar = [d.vereda, d.municipio, d.departamento].filter(Boolean).join(', ');
+const kicker = `${d.vereda ? `${d.vereda} · ` : ''}${d.municipio}, ${d.departamento}`;
 const whatsappUrl = d.contacto
   ? `https://wa.me/${d.contacto.whatsapp}?text=${encodeURIComponent(
       `Hola ${d.contacto.nombre}, vi el ${d.nombre} en Verdelote y quiero agendar una visita`,
     )}`
   : undefined;
 
-// Capítulos del recorrido: arranca en el primero que tenga video
-const capitulos = await Promise.all(
-  d.recorrido.map(async (c) => ({
-    ...c,
-    posterUrl: (await getImage({ src: c.poster, width: 1600, format: 'webp' })).src,
-  })),
-);
-const inicial = Math.max(0, capitulos.findIndex((c) => c.video));
+// Portada: video de un capítulo (o del recorrido) si existe; si no, la foto de portada; si no, un fondo sobrio
+const clip = primerClip(d);
+const heroPoster = clip ? (await getImage({ src: clip.poster, width: 1920, format: 'webp' })).src : undefined;
 
-// Recorrido completo (opcional): poster optimizado para el reproductor
-const completo = d.video_completo
-  ? {
-      ...d.video_completo,
-      posterUrl: (await getImage({ src: d.video_completo.poster, width: 1600, format: 'webp' })).src,
-    }
-  : undefined;
+// Reproductor a pantalla completa: recorrido completo y vuelo comparten el mismo diálogo
+const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+const videos: Record<string, { src: string; poster: string; label: string }> = {};
+if (d.video_completo) {
+  videos.completo = {
+    src: url(d.video_completo.src),
+    poster: (await getImage({ src: d.video_completo.poster, width: 1600, format: 'webp' })).src,
+    label: 'Recorrido completo',
+  };
+}
+if (d.vuelo) {
+  videos.vuelo = {
+    src: url(d.vuelo.src),
+    poster: (await getImage({ src: d.vuelo.poster, width: 1600, format: 'webp' })).src,
+    label: 'Vuelo hasta el lote',
+  };
+}
+const playKey = d.video_completo ? 'completo' : d.vuelo ? 'vuelo' : undefined;
+const playTitulo = d.video_completo ? 'Ver el recorrido completo' : 'Ver el vuelo hasta el lote';
+const playDetalle = d.video_completo
+  ? `Desde el espacio hasta el lote · ${d.video_completo.duracion}`
+  : d.vuelo
+    ? `Del planeta al lote · ${mmss(d.vuelo.duracion_s)}`
+    : '';
+
+// Recorrido por scroll
+const historiaPosters = await Promise.all(
+  d.historia.map(async (h) => (h.video ? (await getImage({ src: h.media, width: 1920, format: 'webp' })).src : undefined)),
+);
 
 const cifras = d.cifras ?? [
   { valor: formatArea(d.area_m2), etiqueta: 'Área total' },
@@ -58,12 +77,32 @@ const iconoAtributo = (texto: string): IconName => {
   return 'check-circle';
 };
 
+// Mosaico: los atributos van en filas de hasta tres (la última fila se reparte sin dejar huecos)
+const atributos = d.atributos.map((texto) => ({ texto, icono: iconoAtributo(texto) }));
+const spanDe = (resto: number) => (resto >= 3 ? 2 : resto === 2 ? 3 : 6);
+const celdas = atributos.map((a, i) => ({
+  ...a,
+  span: spanDe(Math.min(3, atributos.length - Math.floor(i / 3) * 3)),
+  ultimoImpar: i === atributos.length - 1 && atributos.length % 2 === 1,
+}));
+
 // Cercanías agrupadas por minutos, de la más cercana a la más lejana
+const minusculaInicial = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
 const grupos = [...Map.groupBy(d.cercanias, (c) => c.minutos ?? 0)]
   .sort(([a], [b]) => a - b)
-  .map(([minutos, items]) => ({ minutos, lugares: items.map((i) => i.lugar) }));
+  .map(([minutos, items]) => ({
+    minutos,
+    lugares: items.map((i, n) => (n === 0 ? i.lugar : minusculaInicial(i.lugar))).join(', '),
+  }));
 
-const galeriaVisible = d.galeria.slice(0, 5);
+// Foto del mosaico: la indicada en foto_mosaico o la primera de la galería que la historia aún no usa
+const usadas = new Set(d.historia.map((h) => h.media.src));
+const fotoMosaico =
+  d.galeria[d.foto_mosaico ?? -1] ?? d.galeria.find((g) => !usadas.has(g.src.src)) ?? d.galeria[0];
+
+// Ubicación
+const ubicacionImg = d.vuelo?.final ?? d.ubicacion?.src;
+const aproximada = d.coordenadas?.aproximadas;
 
 // Vista previa al compartir (WhatsApp, redes): portada recortada a 1200x630
 const og = d.portada
@@ -139,24 +178,38 @@ const fichaLd = {
 ---
 
 <Base
+  nav="overlay"
   title={d.nombre}
   description={descripcion}
   image={og ? absoluteUrl(og.src) : undefined}
   imageAlt={d.nombre}
   jsonLd={d.demo ? undefined : fichaLd}
 >
-  <div class="localbar no-print" slot="localbar">
+  <button
+    slot="nav-right"
+    type="button"
+    class="icon-btn"
+    data-share
+    data-url={fichaUrl}
+    data-title={d.nombre}
+    data-text={d.tagline}
+    aria-label="Compartir este lote"
+  >
+    <Icon name="share-network" />
+  </button>
+
+  <div class="bar no-print" slot="localbar" data-bar>
     <div class="wrap">
       <a class="back" href={url()} aria-label="Volver a los lotes"><Icon name="caret-left" /><span>Lotes</span></a>
       <span class="name">{d.nombre}</span>
       <div class="right">
         <div class="pricebox">
           <span class="price">{formatPrecio(d.precio_cop)}</span>
-          <span class="ppm">{precioM2}</span>
+          <small>{precioM2}</small>
         </div>
         <button
           type="button"
-          class="btn btn-ghost share"
+          class="icon-btn sm"
           data-share
           data-url={fichaUrl}
           data-title={d.nombre}
@@ -164,11 +217,10 @@ const fichaLd = {
           aria-label="Compartir este lote"
         >
           <Icon name="share-network" />
-          <span>Compartir</span>
         </button>
         {
           whatsappUrl && (
-            <a class="btn btn-primary cta-top" href={whatsappUrl} target="_blank" rel="noopener">
+            <a class="btn btn-primary btn-sm cta-top" href={whatsappUrl} target="_blank" rel="noopener">
               <Icon name="whatsapp" />
               Agendar visita
             </a>
@@ -178,206 +230,273 @@ const fichaLd = {
     </div>
   </div>
 
-  <section class="head">
-    {d.demo && <p class="demo">Lote de demostración, con datos de ejemplo</p>}
-    <h1>{d.nombre}</h1>
-    <span class="tag">{d.tagline}</span>
-    <div class="where">
-      <span class="loc"><Icon name="map-pin" />{lugar}</span>
-      {
-        rutaUrl && (
-          <a class="route" href={rutaUrl} target="_blank" rel="noopener">
-            <Icon name="navigation-arrow" />
-            Cómo llegar
-            <span class="sr-only">(abre Google Maps)</span>
-          </a>
-        )
-      }
-      {d.coordenadas?.aproximadas && <span class="approx">Ubicación aproximada</span>}
-    </div>
-  </section>
-
-  {
-    d.portada && (
-      <div class="print-only print-cover">
-        <Image src={d.portada} alt={d.nombre} widths={[900, 1400]} sizes="720px" loading="lazy" />
-      </div>
-    )
-  }
-
-  <section class="no-print" aria-label="Recorrido" data-recorrido>
-    <div class="stage">
-      {
-        capitulos.length > 0 ? (
-          capitulos.map((c, i) =>
-            c.video ? (
-              <video
-                id={`cap-${i}`}
-                class="pane"
-                data-pane={i}
-                hidden={i !== inicial}
-                src={url(c.video)}
-                poster={c.posterUrl}
-                muted
-                loop
-                playsinline
-                autoplay={i === inicial}
-                preload={i === inicial ? 'auto' : 'none'}
-                aria-label={`Recorrido: ${c.titulo}`}
-              />
-            ) : (
-              <Image
-                class="pane"
-                data-pane={i}
-                hidden={i !== inicial}
-                src={c.poster}
-                alt={`${c.titulo}: ${c.descripcion}`}
-                widths={[800, 1600]}
-                sizes="(max-width: 1100px) 100vw, 1200px"
-              />
-            ),
-          )
-        ) : d.portada ? (
-          <Image class="pane" src={d.portada} alt={d.nombre} widths={[800, 1600]} sizes="(max-width: 1100px) 100vw, 1200px" />
-        ) : (
-          <div class="pane noimg">
-            <Icon name="image" />
-            <span>Fotos de ejemplo</span>
-          </div>
-        )
-      }
-      {capitulos.some((c) => c.video) && <PauseButton videoId={`cap-${inicial}`} />}
-    </div>
-
+  <!-- Portada -->
+  <section class="stage hero no-print" id="hero" aria-label="Portada del lote">
     {
-      capitulos.length > 1 && (
-        <div class="chapters" role="tablist" aria-label="Capítulos del recorrido">
-          {capitulos.map((c, i) => (
-            <button
-              type="button"
-              class="chap"
-              role="tab"
-              aria-selected={i === inicial ? 'true' : 'false'}
-              aria-controls={c.video ? `cap-${i}` : undefined}
-              data-chap={i}
-            >
-              <img src={c.posterUrl} alt="" loading="lazy" />
-              <div>
-                <strong>{c.titulo}</strong>
-                <span>
-                  {c.video ? <Icon name="play-circle" /> : <Icon name="image" />}
-                  {c.video ? 'Video' : 'Foto'}
-                </span>
-              </div>
-            </button>
-          ))}
+      clip && heroPoster ? (
+        <video
+          id="hero-video"
+          src={url(clip.src)}
+          poster={heroPoster}
+          autoplay
+          muted
+          loop
+          playsinline
+          aria-hidden="true"
+        />
+      ) : d.portada ? (
+        <Image class="bg" src={d.portada} alt="" widths={[1000, 1600, 2200]} sizes="100vw" loading="eager" />
+      ) : (
+        <div class="bg bg-sobrio"></div>
+      )
+    }
+    {
+      clip && (
+        <div class="ctl">
+          <PauseButton videoId="hero-video" />
         </div>
       )
     }
-  </section>
-
-  <section class="figures" aria-label="Datos clave">
-    {
-      cifras.map((c) => (
-        <div class:list={{ price: /^precio/i.test(c.etiqueta) }}>
-          <strong>{c.valor}</strong>
-          <span>{c.etiqueta}</span>
+    <div class="stage-ui">
+      <div class="wrap">
+        <div class="hero-title">
+          {d.demo && <span class="demo-tag">Lote de demostración</span>}
+          <span class="kicker"><Icon name="map-pin" />{kicker}</span>
+          <h1>{nombreCorto(d.nombre)}</h1>
+          <p>{d.tagline}</p>
         </div>
-      ))
-    }
+        <div class:list={['dock', { solo: !playKey }]}>
+          {
+            playKey && (
+              <button type="button" class="playfull" data-play={playKey}>
+                <span class="circ"><Icon name="play-fill" /></span>
+                <span>
+                  <b>{playTitulo}</b>
+                  <small>{playDetalle}</small>
+                </span>
+              </button>
+            )
+          }
+          <div class="grow"></div>
+          <div class="price-dock">
+            <strong>{formatPrecio(d.precio_cop)}</strong>
+            <span>{precioM2}</span>
+          </div>
+          {
+            (rutaUrl || whatsappUrl) && <div class="sep"></div>
+          }
+          {
+            rutaUrl && (
+              <a class="btn btn-glass" href={rutaUrl} target="_blank" rel="noopener">
+                <Icon name="navigation-arrow" />
+                Cómo llegar
+                <span class="sr-only">(abre Google Maps)</span>
+              </a>
+            )
+          }
+          {
+            whatsappUrl && (
+              <a class="btn btn-primary" href={whatsappUrl} target="_blank" rel="noopener">
+                <Icon name="whatsapp" />
+                Agendar visita
+              </a>
+            )
+          }
+        </div>
+      </div>
+    </div>
   </section>
-  <p class="lead">{d.resumen}</p>
 
+  <!-- Frase de apertura -->
   {
-    d.atributos.length > 0 && (
-      <section class="block">
-        <h2>Lo que incluye</h2>
-        <div class="includes">
-          {d.atributos.map((a) => (
-            <div class="inc">
-              <Icon name={iconoAtributo(a)} />
-              <strong>{a}</strong>
-            </div>
+    d.frase && (
+      <section class="band no-print">
+        <div class="wrap">
+          <p class="statement reveal">
+            {d.frase.principal}{' '}
+            {d.frase.atenuada && <em>{d.frase.atenuada}</em>}
+          </p>
+        </div>
+      </section>
+    )
+  }
+
+  <!-- Recorrido por scroll: escena fija a pantalla completa y un paso por capítulo -->
+  {
+    d.historia.length > 0 && (
+      <section class="story no-print" aria-label="Recorrido por el lote" data-story>
+        <div class="story-media" aria-hidden="true">
+          {d.historia.map((h, i) =>
+            h.video ? (
+              <video
+                class:list={['layer', { on: i === 0 }]}
+                data-m={i}
+                src={url(h.video)}
+                poster={historiaPosters[i]}
+                muted
+                loop
+                playsinline
+                preload="none"
+              />
+            ) : (
+              <Image
+                class:list={['layer', { on: i === 0 }]}
+                data-m={i}
+                src={h.media}
+                alt=""
+                widths={[1000, 1600, 2200]}
+                sizes="100vw"
+              />
+            ),
+          )}
+          <div class="dots">
+            {d.historia.map((_, i) => <span class:list={{ on: i === 0 }}></span>)}
+          </div>
+        </div>
+        <div class="story-steps wrap">
+          {d.historia.map((h, i) => (
+            <article class="step" data-s={i}>
+              <div class="card-media">
+                <Image src={h.media} alt="" widths={[500, 900]} sizes="(max-width: 700px) 100vw, 1px" />
+              </div>
+              <div class="txt">
+                <span class="n">{String(i + 1).padStart(2, '0')} · {h.etiqueta}</span>
+                <h3>{h.titulo}</h3>
+                <p>{h.texto}</p>
+              </div>
+            </article>
           ))}
         </div>
       </section>
     )
   }
 
-  {
-    grupos.length > 0 && (
-      <section class="block">
-        <h2>Cerca de todo</h2>
-        <div class="near">
-          {grupos.map((g) => (
-            <div class:list={{ wide: g.lugares.length > 2 }}>
-              <span class="min">
-                {g.minutos}
-                <small>min</small>
-              </span>
-              <ul>
-                {g.lugares.map((l) => (
-                  <li>{l}</li>
-                ))}
-              </ul>
+  <!-- Cifras y mosaico -->
+  <section class="band no-print" aria-labelledby="cifras-titulo">
+    <div class="wrap">
+      <h2 class="h-lg reveal" id="cifras-titulo">Todo en cifras</h2>
+      {!d.frase && <p class="resumen reveal">{d.resumen}</p>}
+      <div class="figures reveal" style={`--n:${cifras.length}`}>
+        {
+          cifras.map((c) => (
+            <div class:list={{ price: /^precio/i.test(c.etiqueta) }}>
+              <strong class:list={{ long: c.valor.length > 9 }}>{c.valor}</strong>
+              <span>{c.etiqueta}</span>
             </div>
-          ))}
-        </div>
-      </section>
-    )
-  }
+          ))
+        }
+      </div>
 
-  {
-    completo && (
-      <section class="block no-print" aria-labelledby="ubicacion-titulo">
-        <h2 id="ubicacion-titulo">Ubicación y recorrido</h2>
-        <p class="sub">Desde el espacio hasta {d.vereda ? d.vereda.replace(/^Vereda/, 'la vereda') : d.municipio}, en un minuto</p>
-        <video
-          class="player"
-          src={url(completo.src)}
-          poster={completo.posterUrl}
-          controls
-          playsinline
-          preload="none"
-          aria-label={`Ubicación y recorrido, ${completo.duracion}`}
-        />
-      </section>
-    )
-  }
+      {
+        (celdas.length > 0 || grupos.length > 0) && (
+          <div class="bento reveal">
+            {celdas.map((c) => (
+              <div class:list={['tile', `c${c.span}`, { odd: c.ultimoImpar }]}>
+                <Icon name={c.icono} />
+                <strong>{c.texto}</strong>
+              </div>
+            ))}
+            {grupos.length > 0 && (
+              <div class:list={['tile', 'r2', 'near-tile', fotoMosaico ? 'c4' : 'c6']}>
+                <div>
+                  <strong>Cerca de todo</strong>
+                  <small>Tiempos desde el lote</small>
+                </div>
+                <div class="near">
+                  {grupos.map((g) => (
+                    <>
+                      <b>
+                        {g.minutos}
+                        <small>min</small>
+                      </b>
+                      <span>{g.lugares}</span>
+                    </>
+                  ))}
+                </div>
+              </div>
+            )}
+            {fotoMosaico && (
+              <div class:list={['tile', 't-photo', 'r2', grupos.length > 0 ? 'c2' : 'c6']}>
+                <Image src={fotoMosaico.src} alt={fotoMosaico.alt} widths={[600, 1000]} sizes="(max-width: 700px) 100vw, 440px" />
+                <div class="cap">
+                  <strong>{fotoMosaico.alt}</strong>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      }
+    </div>
+  </section>
 
+  <!-- Ubicación -->
   {
-    !completo && !d.demo && d.galeria.length > 0 && (
-      <section class="block no-print">
-        <h2>Ubicación</h2>
-        <div class="map">
-          <Image src={d.galeria[Math.min(6, d.galeria.length - 1)].src} alt="" widths={[800, 1600]} sizes="100vw" />
-          <div class="over">
-            <strong>Vuelo 3D hasta el lote</strong>
-            <span>Disponible cuando tengamos el punto exacto en el mapa</span>
+    (d.vuelo || rutaUrl) && (
+      <section class="band loc-band no-print" id="ubicacion" aria-label="Ubicación">
+        <div class="wrap">
+          <div class="loc reveal">
+            {ubicacionImg ? (
+              <Image
+                class="locimg"
+                src={ubicacionImg}
+                alt={d.vuelo ? 'Vista aérea del lote resaltado en la ladera' : 'Ubicación del lote'}
+                widths={[900, 1600, 2200]}
+                sizes="(max-width: 1320px) 100vw, 1320px"
+              />
+            ) : (
+              <div class="locimg bg-sobrio"></div>
+            )}
+            <div class="over">
+              <div>
+                <h3>{d.vereda ?? d.municipio}</h3>
+                <p>
+                  {d.municipio}, {d.departamento}
+                  {aproximada && ' · ubicación aproximada'}
+                </p>
+              </div>
+              <div class="actions">
+                {d.vuelo && (
+                  <button type="button" class="btn btn-glass" data-play="vuelo">
+                    <Icon name="play-fill" />
+                    Ver el vuelo
+                  </button>
+                )}
+                {rutaUrl && (
+                  <a class="btn btn-light" href={rutaUrl} target="_blank" rel="noopener">
+                    <Icon name="navigation-arrow" />
+                    Cómo llegar
+                    <span class="sr-only">(abre Google Maps)</span>
+                  </a>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </section>
     )
   }
 
+  <!-- Galería -->
   {
     d.galeria.length > 0 && (
-      <section class="block no-print">
-        <h2>Galería</h2>
-        <div class="gallery">
-          {galeriaVisible.map((g, i) => {
-            const masFotos = i === galeriaVisible.length - 1 && d.galeria.length > galeriaVisible.length;
-            return (
-              <button
-                type="button"
-                data-open={i}
-                aria-label={masFotos ? `Ver las ${d.galeria.length} fotos` : `Ampliar foto ${i + 1} de ${d.galeria.length}`}
-              >
-                <Image src={g.src} alt={g.alt} widths={[400, 900]} sizes={i === 0 ? '(max-width: 860px) 100vw, 620px' : '300px'} />
-                {masFotos && <span class="more">Ver las {d.galeria.length} fotos</span>}
-              </button>
-            );
-          })}
+      <section class="gal no-print" aria-labelledby="galeria-titulo">
+        <div class="wrap strip-head">
+          <h2 class="h-lg" id="galeria-titulo">Galería</h2>
+          <div class="arrows">
+            <button type="button" class="icon-btn" data-strip-prev aria-label="Fotos anteriores">
+              <Icon name="caret-left" />
+            </button>
+            <button type="button" class="icon-btn" data-strip-next aria-label="Fotos siguientes">
+              <Icon name="caret-right" />
+            </button>
+          </div>
+        </div>
+        <div class="strip" data-strip>
+          {d.galeria.map((g, i) => (
+            <button type="button" data-open={i} aria-label={`Ampliar foto ${i + 1} de ${d.galeria.length}: ${g.alt}`}>
+              <Image src={g.src} alt="" widths={[560, 1100]} sizes="(max-width: 700px) 80vw, 560px" />
+            </button>
+          ))}
         </div>
 
         <dialog class="lightbox" aria-label="Galería de fotos" data-lightbox>
@@ -406,49 +525,123 @@ const fichaLd = {
     )
   }
 
-  {
-    whatsappUrl && d.contacto && (
-      <section class="closing no-print">
-        <div>
-          <h2>Conócelo en persona</h2>
+  <!-- Cierre -->
+  <section class="wrap closing no-print" id="visita">
+    {
+      whatsappUrl && d.contacto ? (
+        <>
+          <h2 class="reveal">Conócelo en persona</h2>
           <p>{d.contacto.nombre} responde por WhatsApp y te acompaña al lote</p>
-        </div>
-        <a class="btn btn-primary" href={whatsappUrl} target="_blank" rel="noopener">
-          <Icon name="whatsapp" />
-          Agendar visita
-        </a>
-      </section>
-    )
-  }
-
-  <section class="extras no-print" aria-label="Más opciones">
-    <div class="agents">
-      <h2>Para agentes</h2>
-      <div class="actions">
-        {
-          d.video_vertical && (
-            <a class="btn btn-ghost" href={url(d.video_vertical)} download>
-              <Icon name="download-simple" />
-              Descargar video vertical para redes
+          <div class="actions">
+            <a class="btn btn-primary" href={whatsappUrl} target="_blank" rel="noopener">
+              <Icon name="whatsapp" />
+              Agendar visita
             </a>
-          )
-        }
-        <button type="button" class="btn btn-ghost" data-copy={mensajeWhatsapp} data-copied="Mensaje copiado">
-          <Icon name="copy-simple" />
-          Copiar mensaje para WhatsApp
-        </button>
-      </div>
-    </div>
-    <button type="button" class="btn btn-ghost" data-print>
+            {playKey && (
+              <button type="button" class="btn btn-light" data-play={playKey}>
+                <Icon name="play-fill" />
+                Ver el recorrido
+              </button>
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          <h2 class="reveal">Explora más lotes</h2>
+          <p>{d.demo ? 'Este es un lote de demostración, con datos de ejemplo' : 'Mira los demás lotes disponibles en Antioquia'}</p>
+          <div class="actions">
+            <a class="btn btn-primary" href={url('#lotes')}>Ver todos los lotes</a>
+          </div>
+        </>
+      )
+    }
+  </section>
+
+  <div class="wrap no-print"><div class="agents">
+    <span>Para agentes</span>
+    {
+      d.video_vertical && (
+        <a class="btn btn-ghost btn-sm" href={url(d.video_vertical)} download>
+          <Icon name="download-simple" />
+          Video vertical para redes
+        </a>
+      )
+    }
+    <button type="button" class="btn btn-ghost btn-sm" data-copy={mensajeWhatsapp} data-copied="Mensaje copiado">
+      <Icon name="copy-simple" />
+      Copiar mensaje para WhatsApp
+    </button>
+    <button type="button" class="btn btn-ghost btn-sm" data-print>
       <Icon name="file-pdf" />
       Descargar ficha (PDF)
     </button>
-  </section>
+  </div></div>
 
-  <section class="print-only print-contact">
-    <h2>Contacto</h2>
-    {d.contacto && <p>{d.contacto.nombre}, WhatsApp {formatTelefono(d.contacto.whatsapp)}</p>}
-    <p>Ficha en línea: {fichaUrl}</p>
+  <!-- Ficha para imprimir: siempre en claro y sin elementos de pantalla -->
+  <section class="print-only sheet">
+    {d.demo && <p class="p-demo">Lote de demostración, con datos de ejemplo</p>}
+    <h1>{d.nombre}</h1>
+    <p class="p-tag">{d.tagline}</p>
+    <p class="p-where">
+      {lugar}
+      {aproximada && ' · ubicación aproximada'}
+    </p>
+    {
+      d.portada && (
+        <div class="print-cover">
+          <Image src={d.portada} alt={d.nombre} widths={[900, 1400]} sizes="720px" loading="lazy" />
+        </div>
+      )
+    }
+    <div class="p-figures">
+      {
+        cifras.map((c) => (
+          <div>
+            <strong>{c.valor}</strong>
+            <span>{c.etiqueta}</span>
+          </div>
+        ))
+      }
+    </div>
+    <p class="p-lead">{d.resumen}</p>
+    {
+      atributos.length > 0 && (
+        <div class="p-block">
+          <h2>Lo que incluye</h2>
+          <div class="p-inc">
+            {atributos.map((a) => (
+              <div>
+                <Icon name={a.icono} />
+                <strong>{a.texto}</strong>
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+    {
+      grupos.length > 0 && (
+        <div class="p-block">
+          <h2>Cerca de todo</h2>
+          <div class="p-near">
+            {grupos.map((g) => (
+              <div class:list={{ wide: g.lugares.length > 36 }}>
+                <span class="p-min">
+                  {g.minutos}
+                  <small>min</small>
+                </span>
+                <span>{g.lugares}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+    <div class="p-contact">
+      <h2>Contacto</h2>
+      {d.contacto && <p>{d.contacto.nombre}, WhatsApp {formatTelefono(d.contacto.whatsapp)}</p>}
+      <p>Ficha en línea: {fichaUrl}</p>
+    </div>
   </section>
 
   {
@@ -465,53 +658,125 @@ const fichaLd = {
       </div>
     )
   }
+
+  <!-- Reproductor a pantalla completa: recorrido completo o vuelo -->
+  {
+    Object.keys(videos).length > 0 && (
+      <dialog class="player no-print" aria-label="Recorrido" data-player data-videos={JSON.stringify(videos)}>
+        <video controls playsinline preload="none" data-pv></video>
+        <button type="button" class="icon-btn x" data-pclose aria-label="Cerrar reproductor" autofocus>
+          <Icon name="x" />
+        </button>
+      </dialog>
+    )
+  }
 </Base>
 
 <script>
   import { initPrint, initShare } from '../../lib/share';
-  import { initPauseButtons } from '../../lib/video-controls';
+  import { initPauseButtons, playWhenVisible } from '../../lib/video-controls';
 
   initPauseButtons();
   initShare();
   initPrint();
-
-  // Capítulos: cambian el panel visible del visor y reproducen el video si lo hay
-  const root = document.querySelector<HTMLElement>('[data-recorrido]');
-  const pauseBtn = root?.querySelector<HTMLButtonElement>('[data-pause-for]');
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // En la tira horizontal (tablet y celular) el capítulo activo queda a la vista sin mover la página
-  const tira = root?.querySelector<HTMLElement>('.chapters');
-  const centrarCapitulo = (tab: HTMLElement) => {
-    if (!tira || tira.scrollWidth <= tira.clientWidth) return;
-    const a = tab.getBoundingClientRect();
-    const b = tira.getBoundingClientRect();
-    tira.scrollTo({
-      left: tira.scrollLeft + (a.left - b.left) - (b.width - a.width) / 2,
-      behavior: reduce ? 'auto' : 'smooth',
-    });
-  };
-  const activo = root?.querySelector<HTMLElement>('[data-chap][aria-selected="true"]');
-  if (activo) centrarCapitulo(activo);
-  root?.querySelectorAll<HTMLButtonElement>('[data-chap]').forEach((tab) => {
-    tab.addEventListener('click', () => {
-      const i = tab.dataset.chap;
-      root.querySelectorAll<HTMLElement>('[data-pane]').forEach((pane) => {
-        const activo = pane.dataset.pane === i;
-        pane.hidden = !activo;
-        if (pane instanceof HTMLVideoElement) {
-          if (activo && !reduce) pane.play();
-          else pane.pause();
-        }
+
+  // Portada: el video solo corre mientras se ve
+  const hero = document.getElementById('hero')!;
+  const hv = document.getElementById('hero-video') as HTMLVideoElement | null;
+  if (hv) playWhenVisible(hv, hero, 0.2);
+
+  // Al bajar de la portada: la barra fija reemplaza a la navegación transparente
+  const root = document.documentElement;
+  new IntersectionObserver(([e]) => root.toggleAttribute('data-bar', !e.isIntersecting), {
+    rootMargin: '-64px 0px 0px 0px',
+  }).observe(hero);
+
+  // Aparición suave de los bloques
+  const revelar = new IntersectionObserver(
+    (es) =>
+      es.forEach((e) => {
+        if (!e.isIntersecting) return;
+        e.target.classList.add('in');
+        revelar.unobserve(e.target);
+      }),
+    { threshold: 0.2 },
+  );
+  document.querySelectorAll('.reveal').forEach((el) => revelar.observe(el));
+
+  // Recorrido por scroll: el paso visible activa su capa; el video solo corre cuando su capítulo está activo
+  const story = document.querySelector<HTMLElement>('[data-story]');
+  if (story) {
+    const capas = [...story.querySelectorAll<HTMLElement>('[data-m]')];
+    const puntos = [...story.querySelectorAll<HTMLElement>('.dots span')];
+    const apilado = window.matchMedia('(max-width: 700px)');
+    let activo = 0;
+    const sincronizar = (visible = true) => {
+      capas.forEach((c, n) => {
+        c.classList.toggle('on', n === activo);
+        const v = c instanceof HTMLVideoElement ? c : undefined;
+        if (!v) return;
+        if (n === activo && visible && !reduce && !apilado.matches) v.play().catch(() => undefined);
+        else v.pause();
       });
-      root.querySelectorAll('[data-chap]').forEach((t) => t.setAttribute('aria-selected', String(t === tab)));
-      centrarCapitulo(tab);
-      const video = root.querySelector<HTMLVideoElement>(`video[data-pane="${i}"]`);
-      if (pauseBtn) {
-        pauseBtn.hidden = !video;
-        if (video) pauseBtn.dataset.pauseFor = video.id;
-      }
-    });
-  });
+      puntos.forEach((p, n) => p.classList.toggle('on', n === activo));
+    };
+    const pasos = new IntersectionObserver(
+      (es) =>
+        es.forEach((e) => {
+          if (!e.isIntersecting) return;
+          activo = Number((e.target as HTMLElement).dataset.s);
+          sincronizar();
+        }),
+      { threshold: 0.55 },
+    );
+    story.querySelectorAll('.step').forEach((s) => pasos.observe(s));
+    new IntersectionObserver(([e]) => sincronizar(e.isIntersecting), { threshold: 0 }).observe(story);
+  }
+
+  // Reproductor a pantalla completa (recorrido completo y vuelo): Esc o el botón lo cierran y pausan
+  const player = document.querySelector<HTMLDialogElement>('[data-player]');
+  if (player) {
+    const pv = player.querySelector<HTMLVideoElement>('[data-pv]')!;
+    const fuentes = JSON.parse(player.dataset.videos ?? '{}') as Record<string, { src: string; poster: string; label: string }>;
+    let actual = '';
+    document.querySelectorAll<HTMLElement>('[data-play]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const clave = b.dataset.play ?? '';
+        const f = fuentes[clave];
+        if (!f) return;
+        if (actual !== clave) {
+          pv.src = f.src;
+          pv.poster = f.poster;
+          actual = clave;
+        }
+        player.setAttribute('aria-label', f.label);
+        player.showModal();
+        pv.currentTime = 0;
+        pv.play().catch(() => undefined);
+      }),
+    );
+    player.querySelector('[data-pclose]')!.addEventListener('click', () => player.close());
+    player.addEventListener('close', () => pv.pause());
+  }
+
+  // Galería: franja horizontal con flechas
+  const strip = document.querySelector<HTMLElement>('[data-strip]');
+  if (strip) {
+    const prev = document.querySelector<HTMLButtonElement>('[data-strip-prev]')!;
+    const next = document.querySelector<HTMLButtonElement>('[data-strip-next]')!;
+    const estado = () => {
+      prev.disabled = strip.scrollLeft <= 4;
+      next.disabled = strip.scrollLeft + strip.clientWidth >= strip.scrollWidth - 4;
+    };
+    const mover = (dir: number) =>
+      strip.scrollBy({ left: dir * Math.max(280, strip.clientWidth * 0.8), behavior: reduce ? 'auto' : 'smooth' });
+    prev.addEventListener('click', () => mover(-1));
+    next.addEventListener('click', () => mover(1));
+    strip.addEventListener('scroll', estado, { passive: true });
+    window.addEventListener('resize', estado);
+    estado();
+  }
 
   // Galería ampliada con <dialog>: Esc cierra, flechas navegan
   const dialog = document.querySelector<HTMLDialogElement>('[data-lightbox]');
@@ -542,372 +807,571 @@ const fichaLd = {
 </script>
 
 <style>
-  /* Las anclas y el foco con teclado no quedan bajo la barra fija; sin scroll de fondo con la galería abierta */
+  /* Las anclas y el foco con teclado no quedan bajo la barra fija; sin scroll de fondo con un diálogo abierto */
   :global(html) {
     scroll-padding-top: 76px;
-    scrollbar-gutter: stable;
   }
   :global(html:has(dialog[open])) {
     overflow: hidden;
   }
 
-  .localbar {
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    border-bottom: 1px solid var(--line);
-    background: color-mix(in srgb, var(--bg) 82%, transparent);
+  /* Navegación transparente arriba; al bajar la reemplaza la barra fija */
+  :global(html[data-bar] .nav) {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .bar {
+    position: fixed;
+    inset: 0 0 auto;
+    z-index: 40;
+    height: 60px;
+    transform: translateY(-100%);
+    visibility: hidden;
+    background: rgb(11 12 13 / 0.78);
     backdrop-filter: saturate(180%) blur(20px);
     -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid var(--line);
+    transition: transform 0.45s var(--ease), visibility 0s 0.45s;
   }
-  .localbar .wrap {
-    height: 60px;
+  :global(html[data-bar]) .bar {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.45s var(--ease), visibility 0s;
+  }
+  .bar .wrap {
+    height: 100%;
     display: flex;
     align-items: center;
-    gap: 24px;
+    gap: 22px;
   }
   .back {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    min-height: 44px;
     color: var(--muted);
     font-size: 0.9375rem;
   }
+  .back:hover {
+    color: var(--text);
+  }
   .name {
+    min-width: 0;
     font-weight: 600;
-    font-size: 1.0625rem;
     letter-spacing: -0.015em;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .right {
+  .bar .right {
     margin-left: auto;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
   }
   .pricebox {
-    display: grid;
-    justify-items: end;
-    margin-right: 8px;
-    line-height: 1.25;
-  }
-  .price {
-    font-weight: 500;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
     white-space: nowrap;
   }
-  .ppm {
+  .pricebox small {
     color: var(--muted);
-    font-size: 0.75rem;
-    white-space: nowrap;
+    font-size: 0.8125rem;
   }
-  .localbar .btn {
+  .icon-btn.sm {
+    width: 44px;
     height: 44px;
-    padding: 0 18px;
-    font-size: 0.875rem;
   }
-
   .bottombar {
     display: none;
   }
 
-  .head {
-    display: grid;
-    gap: 10px;
-    padding: 40px 0 28px;
+  /* Portada */
+  .ctl {
+    position: absolute;
+    right: var(--gutter);
+    top: calc(var(--nav-h) + 24px);
+    z-index: 3;
   }
-  .demo {
-    margin: 0;
-    color: var(--muted);
+  .ctl :global(.pause) {
+    position: static;
+  }
+  .hero-title {
+    padding-bottom: 28px;
+  }
+  .demo-tag {
+    display: inline-block;
+    margin-bottom: 14px;
+    padding: 4px 14px;
+    border: 1px solid rgb(255 255 255 / 0.3);
+    border-radius: 999px;
+    color: rgb(255 255 255 / 0.9);
     font-size: 0.875rem;
   }
-  h1 {
-    font-size: clamp(2.5rem, 5vw, 4.25rem);
-    line-height: 1.02;
-  }
-  .tag {
-    color: var(--muted);
-    font-size: 1.375rem;
-    letter-spacing: -0.01em;
-  }
-  .where {
+  .kicker {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
-    gap: 6px 18px;
-    font-size: 0.9375rem;
+    gap: 8px;
+    margin-bottom: 14px;
+    color: rgb(255 255 255 / 0.86);
+    font-size: 1.0625rem;
   }
-  .loc,
-  .route {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
+  .hero-title h1 {
+    font-size: clamp(2.9rem, 8vw, 7.5rem);
+    line-height: 0.94;
   }
-  .loc {
-    color: var(--muted);
-  }
-  .route {
-    color: var(--accent);
-    font-weight: 500;
-  }
-  .route:hover {
-    text-decoration: underline;
-    text-underline-offset: 3px;
-  }
-  .approx {
-    color: var(--muted);
-    font-size: 0.8125rem;
-  }
-
-  .stage {
-    position: relative;
-    width: 100%;
-    aspect-ratio: 16 / 9;
-    max-height: 72vh;
-    border-radius: var(--radius);
-    overflow: hidden;
-    background: var(--surface);
-  }
-  .stage :global(.pane) {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  .stage :global(.pane[hidden]) {
-    display: none;
-  }
-  .stage :global(.pause[hidden]) {
-    display: none;
-  }
-  .chapters {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 16px;
+  .hero-title p {
     margin-top: 16px;
+    max-width: 36ch;
+    font-size: clamp(1.1875rem, 2vw, 1.625rem);
+    color: rgb(255 255 255 / 0.88);
   }
-  .chap {
-    display: grid;
-    grid-template-columns: 96px 1fr;
+  .dock {
+    display: flex;
     align-items: center;
     gap: 14px;
-    min-height: 84px;
-    padding: 10px;
-    border: 1px solid transparent;
-    border-radius: var(--radius);
-    background: transparent;
-    color: inherit;
+    padding: 12px 12px 12px 24px;
+    border-radius: 999px;
+    background: rgb(20 22 24 / 0.55);
+    border: 1px solid rgb(255 255 255 / 0.14);
+    backdrop-filter: saturate(180%) blur(22px);
+    -webkit-backdrop-filter: saturate(180%) blur(22px);
+  }
+  .dock .grow {
+    flex: 1;
+  }
+  .dock.solo {
+    width: fit-content;
+    padding: 14px 28px;
+  }
+  .dock.solo .grow {
+    display: none;
+  }
+  .price-dock strong {
+    font-size: 1.25rem;
+    letter-spacing: -0.02em;
+  }
+  .price-dock span {
+    display: block;
+    font-size: 0.8125rem;
+    color: rgb(255 255 255 / 0.7);
+  }
+  .sep {
+    width: 1px;
+    align-self: stretch;
+    margin: 4px 6px;
+    background: rgb(255 255 255 / 0.16);
+  }
+  .playfull {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 6px 0 0;
+    border: 0;
+    background: none;
+    color: #fff;
     font: inherit;
     text-align: left;
     cursor: pointer;
   }
-  .chap img {
-    width: 96px;
-    height: 64px;
-    object-fit: cover;
-    border-radius: 10px;
+  .playfull .circ {
+    width: 46px;
+    height: 46px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    background: #fff;
+    color: #0b0c0d;
+    font-size: 1.1rem;
+    transition: transform 0.25s var(--ease);
   }
-  .chap strong {
+  .playfull:hover .circ {
+    transform: scale(1.06);
+  }
+  .playfull small {
     display: block;
-    font-weight: 500;
-  }
-  .chap span {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    color: var(--muted);
+    color: rgb(255 255 255 / 0.7);
     font-size: 0.8125rem;
   }
-  .chap[aria-selected='true'] {
-    border-color: var(--line);
-    background: var(--surface);
-  }
-  .chap[aria-selected='true'] span {
-    color: var(--accent);
+  .playfull b {
+    font-weight: 500;
   }
 
+  /* Declaración */
+  .statement {
+    max-width: 18ch;
+    font-size: clamp(2.4rem, 5.4vw, 5.25rem);
+    font-weight: 600;
+    line-height: 1.04;
+    letter-spacing: -0.04em;
+  }
+  .statement em {
+    font-style: normal;
+    color: var(--muted);
+  }
+  .resumen {
+    max-width: 40ch;
+    margin-top: 22px;
+    color: var(--muted);
+    font-size: clamp(1.1875rem, 1.8vw, 1.5rem);
+    line-height: 1.4;
+  }
+
+  /* Recorrido con escena fija */
+  .story {
+    position: relative;
+  }
+  .story-media {
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+    overflow: hidden;
+    background: #000;
+  }
+  .story-media :global(.layer) {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transform: scale(1.06);
+    transition: opacity 1s var(--ease), transform 6s linear;
+  }
+  .story-media :global(.layer.on) {
+    opacity: 1;
+    transform: none;
+  }
+  .story-media::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgb(0 0 0 / 0.72) 0%, rgb(0 0 0 / 0.2) 46%, transparent 70%);
+  }
+  .story-steps {
+    position: relative;
+    z-index: 2;
+    margin-top: -100dvh;
+  }
+  .step {
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+  }
+  .card-media {
+    display: none;
+  }
+  .txt {
+    max-width: 440px;
+  }
+  .n {
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 0.9375rem;
+  }
+  .step h3 {
+    margin-top: 10px;
+    font-size: clamp(2.4rem, 4.6vw, 4.25rem);
+    line-height: 1;
+  }
+  .step p {
+    margin-top: 18px;
+    color: rgb(255 255 255 / 0.86);
+    font-size: 1.3125rem;
+    line-height: 1.45;
+  }
+  .dots {
+    position: absolute;
+    right: var(--gutter);
+    top: 50%;
+    z-index: 3;
+    display: grid;
+    gap: 12px;
+    transform: translateY(-50%);
+  }
+  .dots span {
+    width: 8px;
+    height: 8px;
+    border-radius: 99px;
+    background: rgb(255 255 255 / 0.35);
+    transition: height 0.4s var(--ease), background 0.4s;
+  }
+  .dots span.on {
+    height: 28px;
+    background: #fff;
+  }
+
+  /* Cifras */
   .figures {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 24px;
-    padding: 72px 0 24px;
+    grid-template-columns: repeat(var(--n), 1fr);
+    margin-top: 48px;
+    border-top: 1px solid var(--line);
   }
   .figures div {
-    padding-top: 18px;
-    border-top: 1px solid var(--line);
+    padding: 40px 28px 8px 0;
   }
   .figures strong {
     display: block;
-    font-size: 2.25rem;
+    font-size: clamp(2.2rem, 4.4vw, 4.25rem);
     font-weight: 600;
-    line-height: 1.1;
-    letter-spacing: -0.03em;
-  }
-  .figures strong {
+    line-height: 1;
+    letter-spacing: -0.045em;
     overflow-wrap: anywhere;
   }
+  .figures strong.long {
+    font-size: clamp(1.9rem, 3.1vw, 3rem);
+    white-space: nowrap;
+  }
   .figures span {
+    display: block;
+    margin-top: 10px;
     color: var(--muted);
-    text-transform: none;
-  }
-  .lead {
-    max-width: 34ch;
-    margin: 0;
-    padding-top: 32px;
-    font-size: 1.5rem;
-    line-height: 1.4;
-    letter-spacing: -0.015em;
-  }
-
-  .block {
-    padding-top: 104px;
-  }
-  .block > h2 {
-    margin-bottom: 28px;
-    font-size: 2rem;
-  }
-
-  .includes {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
-  }
-  .inc {
-    display: grid;
-    gap: 14px;
-    padding: 24px;
-    border-radius: var(--radius);
-    background: var(--surface);
-  }
-  .inc :global(.icon) {
-    width: 1.75rem;
-    height: 1.75rem;
-    color: var(--accent);
-  }
-  .inc strong {
-    font-weight: 500;
     font-size: 1.0625rem;
   }
 
-  .near {
+  /* Mosaico */
+  .bento {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(6, 1fr);
+    grid-auto-rows: minmax(190px, auto);
     gap: 16px;
+    margin-top: 56px;
   }
-  .near > div {
+  .tile {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 20px;
     padding: 28px;
-    border: 1px solid var(--line);
     border-radius: var(--radius);
+    background: var(--card);
+    overflow: hidden;
   }
-  .near > .wide {
+  .tile > :global(.icon) {
+    width: 2rem;
+    height: 2rem;
+    color: var(--accent);
+  }
+  .tile strong {
+    font-size: 1.375rem;
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+  }
+  .tile small {
+    display: block;
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 0.9375rem;
+  }
+  .c2 {
     grid-column: span 2;
   }
-  .min {
-    font-size: 3rem;
-    font-weight: 600;
-    line-height: 1;
-    letter-spacing: -0.04em;
+  .c3 {
+    grid-column: span 3;
   }
-  .min small {
-    margin-left: 4px;
-    color: var(--muted);
+  .c4 {
+    grid-column: span 4;
+  }
+  .c6 {
+    grid-column: span 6;
+  }
+  .r2 {
+    grid-row: span 2;
+  }
+  .t-photo {
+    padding: 0;
+    min-height: 260px;
+  }
+  .t-photo :global(img) {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .cap {
+    position: absolute;
+    inset: auto 0 0;
+    padding: 28px;
+    background: linear-gradient(0deg, rgb(0 0 0 / 0.8), transparent);
+  }
+  .cap strong {
+    font-size: 1.125rem;
+  }
+  .near {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 14px 22px;
+    align-items: baseline;
+  }
+  .near b {
+    font-size: 2.5rem;
+    font-weight: 600;
+    letter-spacing: -0.04em;
+    line-height: 1;
+  }
+  .near b small {
+    display: inline;
+    margin-left: 3px;
     font-size: 1rem;
     font-weight: 500;
     letter-spacing: 0;
   }
-  .near ul {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin: 18px 0 0;
-    padding: 0;
-    list-style: none;
-  }
-  .near li {
-    padding: 6px 14px;
-    border-radius: 999px;
-    background: var(--surface);
-    font-size: 0.9375rem;
+  .near span {
+    color: rgb(255 255 255 / 0.88);
   }
 
-  .block > .sub {
-    margin: -12px 0 28px;
-    color: var(--muted);
-    font-size: 1.125rem;
+  /* Ubicación */
+  .loc-band {
+    padding-top: 0;
   }
-  .player {
-    display: block;
-    width: 100%;
-    aspect-ratio: 16 / 9;
-    border-radius: var(--radius);
-    background: var(--surface);
-    object-fit: cover;
-  }
-
-  .map {
+  .loc {
     position: relative;
     aspect-ratio: 21 / 9;
-    border-radius: var(--radius);
+    border-radius: 24px;
     overflow: hidden;
+    background: var(--card);
   }
-  .map :global(img) {
+  .loc :global(.locimg),
+  .loc .locimg {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    filter: saturate(0.6) brightness(0.55);
   }
   .over {
     position: absolute;
     inset: 0;
-    display: grid;
-    align-content: end;
-    gap: 6px;
-    padding: 36px;
-    color: #fff;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: flex-start;
+    gap: 24px;
+    padding: 40px;
+    background: linear-gradient(0deg, rgb(0 0 0 / 0.72), transparent 65%);
   }
-  .over strong {
-    font-size: 1.5rem;
-    font-weight: 600;
-    letter-spacing: -0.02em;
+  .over h3 {
+    font-size: clamp(1.75rem, 3vw, 2.25rem);
   }
-  .over span {
-    opacity: 0.85;
+  .over p {
+    margin-top: 6px;
+    color: rgb(255 255 255 / 0.85);
   }
-
-  .gallery {
-    display: grid;
-    grid-template-columns: 2fr 1fr 1fr;
-    grid-template-rows: 240px 240px;
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
     gap: 12px;
   }
-  .gallery button {
-    position: relative;
+
+  /* Galería */
+  .gal {
+    padding-bottom: 40px;
+  }
+  .strip-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-bottom: 32px;
+  }
+  .arrows {
+    display: flex;
+    gap: 10px;
+  }
+  .strip {
+    --edge: max(var(--gutter), calc((100% - var(--max)) / 2 + var(--gutter)));
+    display: flex;
+    gap: 16px;
+    padding: 0 var(--edge) 20px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: var(--edge);
+    scrollbar-width: none;
+  }
+  .strip::-webkit-scrollbar {
+    display: none;
+  }
+  .strip button {
+    flex: 0 0 min(560px, 78vw);
+    aspect-ratio: 4 / 3;
     padding: 0;
     border: 0;
     border-radius: var(--radius);
     overflow: hidden;
-    background: var(--surface);
+    background: var(--card);
     cursor: zoom-in;
+    scroll-snap-align: start;
   }
-  .gallery button:first-child {
-    grid-row: span 2;
-  }
-  .gallery :global(img) {
+  .strip :global(img) {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    transition: transform 0.8s var(--ease);
   }
-  .more {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    background: rgb(15 17 18 / 0.55);
-    color: #fff;
-    font-weight: 500;
-    font-size: 1.0625rem;
+  .strip button:hover :global(img) {
+    transform: scale(1.04);
   }
 
+  /* Cierre */
+  .closing {
+    padding-top: 150px;
+    padding-bottom: 110px;
+    text-align: center;
+  }
+  .closing h2 {
+    font-size: clamp(2.6rem, 6vw, 5.5rem);
+    line-height: 1;
+  }
+  .closing p {
+    margin: 20px auto 36px;
+    max-width: 44ch;
+    color: var(--muted);
+    font-size: clamp(1.125rem, 1.6vw, 1.375rem);
+  }
+  .closing .actions {
+    justify-content: center;
+  }
+  .agents {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding-top: 28px;
+    padding-bottom: 12px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.9375rem;
+  }
+
+  /* Reproductor */
+  dialog.player {
+    width: 100vw;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: #000;
+    color: #fff;
+  }
+  dialog.player video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  dialog.player .x {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+  }
+
+  /* Galería ampliada */
   .lightbox {
     width: 100vw;
     height: 100dvh;
@@ -916,7 +1380,7 @@ const fichaLd = {
     margin: 0;
     padding: 0;
     border: 0;
-    background: rgb(12 13 14 / 0.97);
+    background: rgb(8 9 10 / 0.97);
     color: #fff;
   }
   .lightbox[open] {
@@ -985,224 +1449,330 @@ const fichaLd = {
     right: 20px;
   }
 
-  .closing {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    align-items: end;
-    gap: 32px;
-    margin-top: 120px;
-    padding: 72px 0 48px;
-    border-top: 1px solid var(--line);
-  }
-  .closing h2 {
-    font-size: clamp(2rem, 3.6vw, 3rem);
+  /* Ficha impresa (siempre en claro, ver global.css) */
+  .sheet h1 {
+    font-size: 2.25rem;
     line-height: 1.05;
   }
-  .closing p {
-    margin: 12px 0 0;
+  .p-demo,
+  .p-where {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+  .p-tag {
+    margin: 6px 0 4px;
     color: var(--muted);
     font-size: 1.125rem;
   }
-  .closing .btn {
-    height: 52px;
-    padding: 0 28px;
-    font-size: 1rem;
+  .print-cover {
+    margin-top: 14px;
   }
-
-  .extras {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 24px;
-    padding: 32px 0 56px;
-    border-top: 1px solid var(--line);
-  }
-  .agents h2 {
-    margin-bottom: 12px;
-    color: var(--muted);
-    font-size: 0.9375rem;
-    font-weight: 500;
-    letter-spacing: 0;
-  }
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-  .extras .btn {
-    height: 44px;
-    font-size: 0.875rem;
-  }
-
   .print-cover :global(img) {
     width: 100%;
-    max-height: 95mm;
+    max-height: 48mm;
     object-fit: cover;
-    border-radius: var(--radius);
+    border-radius: 12px;
   }
-  .print-contact {
-    margin-top: 28px;
+  .p-figures {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    padding: 16px 0 4px;
+  }
+  .p-figures div {
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+  }
+  .p-figures strong {
+    display: block;
+    font-size: 1.4rem;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    white-space: nowrap;
+  }
+  .p-figures span {
+    color: var(--muted);
+  }
+  .p-lead {
+    margin: 14px 0 0;
+    font-size: 1.125rem;
+    line-height: 1.4;
+  }
+  .p-block {
+    padding-top: 20px;
+    break-inside: avoid;
+  }
+  .p-block h2 {
+    margin-bottom: 14px;
+    font-size: 1.25rem;
+  }
+  .p-inc {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .p-inc div {
+    display: grid;
+    gap: 6px;
+    padding: 11px 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    break-inside: avoid;
+  }
+  .p-inc :global(.icon) {
+    width: 1.5rem;
+    height: 1.5rem;
+    color: var(--accent);
+  }
+  .p-inc strong {
+    font-size: 0.9375rem;
+    font-weight: 500;
+  }
+  .p-near {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .p-near div {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    break-inside: avoid;
+  }
+  .p-near .wide {
+    grid-column: 1 / -1;
+  }
+  .p-min {
+    font-size: 1.75rem;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.04em;
+  }
+  .p-min small {
+    margin-left: 3px;
+    color: var(--muted);
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  .p-contact {
+    margin-top: 22px;
     padding-top: 16px;
     border-top: 1px solid var(--line);
     break-inside: avoid;
   }
-  .print-contact h2 {
+  .p-contact h2 {
     font-size: 1.125rem;
   }
-  .print-contact p {
+  .p-contact p {
     margin: 6px 0 0;
     overflow-wrap: anywhere;
   }
 
-  @media print {
-    .head {
-      padding: 0 0 14px;
+  @media (max-width: 1100px) {
+    .dock {
+      flex-wrap: wrap;
+      border-radius: 26px;
     }
-    h1 {
-      font-size: 2.25rem;
-    }
-    .tag {
-      font-size: 1.125rem;
-    }
-    .route {
+    .dock .grow {
       display: none;
     }
     .figures {
-      gap: 16px;
-      padding: 22px 0 6px;
+      grid-template-columns: repeat(min(var(--n), 2), 1fr);
     }
-    .figures strong {
-      font-size: 1.5rem;
+    .loc {
+      aspect-ratio: 16 / 10;
     }
-    .lead {
-      padding-top: 14px;
-      font-size: 1.125rem;
+    .over {
+      padding: 32px;
     }
-    .block {
-      padding-top: 26px;
-      break-inside: avoid;
-    }
-    .block > h2 {
-      margin-bottom: 14px;
-      font-size: 1.25rem;
-    }
-    .includes {
-      gap: 10px;
-    }
-    .inc {
-      gap: 8px;
-      padding: 14px;
-      border: 1px solid var(--line);
-      break-inside: avoid;
-    }
-    .inc strong {
-      font-size: 0.9375rem;
-    }
-    .near {
-      gap: 10px;
-    }
-    .near > div {
-      padding: 14px;
-      break-inside: avoid;
-    }
-    .min {
-      font-size: 1.75rem;
-    }
-    .near li {
-      padding: 3px 10px;
-      border: 1px solid var(--line);
-      font-size: 0.8125rem;
+    .dots {
+      right: 24px;
     }
   }
 
-  /* Pantallas táctiles: enlaces sueltos con objetivo de 44px */
-  @media (pointer: coarse) {
-    .back,
-    .route {
-      min-height: 44px;
-    }
-  }
-
-  @media (max-width: 1100px) {
-    .chapters {
-      grid-template-columns: repeat(4, 220px);
-      overflow-x: auto;
-      scroll-snap-type: x mandatory;
-      padding-bottom: 6px;
-    }
-    .chap {
-      scroll-snap-align: start;
-    }
-    .figures {
-      grid-template-columns: repeat(2, 1fr);
-    }
-    .includes {
-      grid-template-columns: repeat(2, 1fr);
-    }
-    .near {
-      grid-template-columns: repeat(2, 1fr);
-    }
-    .gallery {
-      grid-template-rows: 200px 200px;
-    }
-  }
   @media (max-width: 860px) {
     .back span,
-    .pricebox,
-    .share span {
+    .pricebox {
       display: none;
     }
-    .localbar .share {
-      width: 44px;
-      padding: 0;
-      justify-content: center;
-    }
-    .back {
-      justify-content: center;
-      min-width: 44px;
-      min-height: 44px;
-      margin-left: -14px;
-    }
-    .route {
-      min-height: 44px;
-    }
-    .gallery {
-      grid-template-columns: 1fr 1fr;
-      grid-template-rows: 260px 180px 180px;
-    }
-    .gallery button:first-child {
-      grid-column: span 2;
-      grid-row: auto;
-    }
-    .closing {
-      grid-template-columns: 1fr;
-    }
-    .map {
-      aspect-ratio: 16 / 9;
-    }
   }
-  @media (max-width: 600px) {
-    .includes,
-    .near {
-      grid-template-columns: 1fr;
-    }
-    .near > .wide {
-      grid-column: auto;
-    }
-    .figures strong {
-      font-size: 2rem;
-    }
-    .figures .price,
-    .figures div:has(+ .price:last-child):nth-child(odd) {
-      grid-column: 1 / -1;
-    }
+
+  /* Celular: la barra de vidrio se apila, el recorrido pasa a tarjetas y la acción principal queda fija abajo */
+  @media (max-width: 700px) {
     :global(html) {
       scroll-padding-top: 68px;
       scroll-padding-bottom: 88px;
     }
+    .bar {
+      height: 56px;
+    }
+    .bar .wrap {
+      gap: 12px;
+    }
+    .cta-top {
+      display: none;
+    }
+    .ctl {
+      top: calc(var(--nav-h) + 12px);
+    }
+    .hero-title {
+      padding-bottom: 20px;
+    }
+    .hero-title h1 {
+      font-size: clamp(2.6rem, 13.5vw, 3.4rem);
+    }
+    .kicker {
+      font-size: 0.9375rem;
+    }
+    .dock.solo {
+      width: auto;
+    }
+    .dock {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 14px;
+      padding: 16px;
+      border-radius: 24px;
+    }
+    .dock .sep {
+      display: none;
+    }
+    .dock .btn {
+      width: 100%;
+    }
+    .price-dock {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .price-dock span {
+      display: inline;
+    }
 
-    /* Galería ampliada: la foto ocupa todo el ancho y las flechas flotan sobre ella */
+    .story-media {
+      display: none;
+    }
+    .story-steps {
+      display: grid;
+      gap: 20px;
+      margin-top: 0;
+      padding-bottom: 72px;
+    }
+    .step {
+      display: block;
+      min-height: 0;
+      border-radius: var(--radius);
+      background: var(--card);
+      overflow: hidden;
+    }
+    .card-media {
+      display: block;
+      aspect-ratio: 4 / 3;
+    }
+    .card-media :global(img) {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .txt {
+      max-width: none;
+      padding: 24px 22px 28px;
+    }
+    .step h3 {
+      font-size: 2rem;
+    }
+    .step p {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 1.0625rem;
+    }
+
+    .figures {
+      grid-template-columns: repeat(2, 1fr);
+      margin-top: 32px;
+    }
+    .figures div {
+      padding: 28px 12px 4px 0;
+    }
+    .figures strong {
+      font-size: 2rem;
+    }
+    .figures .price {
+      grid-column: 1 / -1;
+    }
+    .bento {
+      grid-template-columns: repeat(2, 1fr);
+      grid-auto-rows: auto;
+      gap: 12px;
+      margin-top: 40px;
+    }
+    .tile {
+      min-height: 150px;
+      padding: 22px;
+    }
+    .tile strong {
+      font-size: 1.125rem;
+    }
+    .tile.c2,
+    .tile.c3 {
+      grid-column: span 1;
+    }
+    .tile.odd,
+    .tile.c4,
+    .tile.c6 {
+      grid-column: span 2;
+    }
+    .r2 {
+      grid-row: auto;
+    }
+    .tile.t-photo {
+      grid-column: span 2;
+      aspect-ratio: 4 / 3;
+    }
+    .near {
+      gap: 12px 16px;
+    }
+    .near b {
+      font-size: 2rem;
+    }
+
+    .loc {
+      aspect-ratio: auto;
+      border-radius: var(--radius);
+      background: var(--card);
+    }
+    .loc :global(.locimg),
+    .loc .locimg {
+      height: auto;
+      aspect-ratio: 4 / 3;
+    }
+    .over {
+      position: static;
+      padding: 22px 22px 26px;
+      background: none;
+    }
+    .strip-head {
+      margin-bottom: 20px;
+    }
+    .strip button {
+      flex-basis: 82vw;
+    }
+    .closing {
+      padding-top: 96px;
+      padding-bottom: 72px;
+    }
+    .closing .actions {
+      flex-direction: column;
+      align-items: stretch;
+      max-width: 340px;
+      margin: 0 auto;
+    }
+
     .lightbox[open] {
       grid-template-columns: 1fr;
     }
@@ -1233,18 +1803,7 @@ const fichaLd = {
       margin-right: 12px;
     }
 
-    /* Barra superior compacta y acción principal fija abajo, al alcance del pulgar */
-    .localbar .wrap {
-      height: 52px;
-      gap: 12px;
-    }
-    .name {
-      font-size: 1rem;
-    }
-    .cta-top {
-      display: none;
-    }
-    .extras .btn {
+    .agents .btn {
       height: auto;
       min-height: 44px;
       padding: 10px 18px;
@@ -1253,19 +1812,25 @@ const fichaLd = {
     }
     .bottombar {
       position: fixed;
-      right: 0;
-      bottom: 0;
-      left: 0;
-      z-index: 20;
+      inset: auto 0 0;
+      z-index: 40;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 16px;
       padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
       border-top: 1px solid var(--line);
-      background: color-mix(in srgb, var(--bg) 88%, transparent);
+      background: rgb(11 12 13 / 0.86);
       backdrop-filter: saturate(180%) blur(20px);
       -webkit-backdrop-filter: saturate(180%) blur(20px);
+      transform: translateY(100%);
+      visibility: hidden;
+      transition: transform 0.45s var(--ease), visibility 0s 0.45s;
+    }
+    :global(html[data-bar]) .bottombar {
+      transform: none;
+      visibility: visible;
+      transition: transform 0.45s var(--ease), visibility 0s;
     }
     .bb-price {
       display: grid;
@@ -1279,9 +1844,6 @@ const fichaLd = {
       color: var(--muted);
       font-size: 0.75rem;
       white-space: nowrap;
-    }
-    .bottombar .btn {
-      height: 46px;
     }
     :global(footer.site-footer.wrap) {
       padding-bottom: calc(48px + 72px + env(safe-area-inset-bottom));
