@@ -331,7 +331,7 @@ const fichaLd = {
     completo && (
       <section class="block no-print" aria-labelledby="ubicacion-titulo">
         <h2 id="ubicacion-titulo">Ubicación y recorrido</h2>
-        <p class="sub">Del valle de Aburrá a {d.vereda ? d.vereda.replace(/^Vereda/, 'la vereda') : d.municipio}, en menos de un minuto</p>
+        <p class="sub">Desde el espacio hasta {d.vereda ? d.vereda.replace(/^Vereda/, 'la vereda') : d.municipio}, en un minuto</p>
         <video
           class="player"
           src={url(completo.src)}
