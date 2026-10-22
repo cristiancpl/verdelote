@@ -4,7 +4,7 @@ import { getCollection, type CollectionEntry } from 'astro:content';
 import Icon, { type IconName } from '../../components/Icon.astro';
 import PauseButton from '../../components/PauseButton.astro';
 import Base from '../../layouts/Base.astro';
-import { absoluteUrl, formatArea, formatPrecio, formatPrecioM2, url } from '../../lib/format';
+import { absoluteUrl, formatArea, formatPrecio, formatPrecioM2, formatTelefono, url } from '../../lib/format';
 
 export async function getStaticPaths() {
   const lotes = await getCollection('lotes');
@@ -197,7 +197,15 @@ const fichaLd = {
     </div>
   </section>
 
-  <section aria-label="Recorrido" data-recorrido>
+  {
+    d.portada && (
+      <div class="print-only print-cover">
+        <Image src={d.portada} alt={d.nombre} widths={[900, 1400]} sizes="720px" loading="lazy" />
+      </div>
+    )
+  }
+
+  <section class="no-print" aria-label="Recorrido" data-recorrido>
     <div class="stage">
       {
         capitulos.length > 0 ? (
@@ -321,7 +329,7 @@ const fichaLd = {
 
   {
     completo && (
-      <section class="block" aria-labelledby="ubicacion-titulo">
+      <section class="block no-print" aria-labelledby="ubicacion-titulo">
         <h2 id="ubicacion-titulo">Ubicación y recorrido</h2>
         <p class="sub">Del valle de Aburrá a {d.vereda ? d.vereda.replace(/^Vereda/, 'la vereda') : d.municipio}, en menos de un minuto</p>
         <video
@@ -339,7 +347,7 @@ const fichaLd = {
 
   {
     !completo && !d.demo && d.galeria.length > 0 && (
-      <section class="block">
+      <section class="block no-print">
         <h2>Ubicación</h2>
         <div class="map">
           <Image src={d.galeria[Math.min(6, d.galeria.length - 1)].src} alt="" widths={[800, 1600]} sizes="100vw" />
@@ -354,7 +362,7 @@ const fichaLd = {
 
   {
     d.galeria.length > 0 && (
-      <section class="block">
+      <section class="block no-print">
         <h2>Galería</h2>
         <div class="gallery">
           {galeriaVisible.map((g, i) => {
@@ -400,7 +408,7 @@ const fichaLd = {
 
   {
     whatsappUrl && d.contacto && (
-      <section class="closing">
+      <section class="closing no-print">
         <div>
           <h2>Conócelo en persona</h2>
           <p>{d.contacto.nombre} responde por WhatsApp y te acompaña al lote</p>
@@ -435,6 +443,12 @@ const fichaLd = {
       <Icon name="file-pdf" />
       Descargar ficha (PDF)
     </button>
+  </section>
+
+  <section class="print-only print-contact">
+    <h2>Contacto</h2>
+    {d.contacto && <p>{d.contacto.nombre}, WhatsApp {formatTelefono(d.contacto.whatsapp)}</p>}
+    <p>Ficha en línea: {fichaUrl}</p>
   </section>
 
   {
@@ -986,6 +1000,87 @@ const fichaLd = {
   .extras .btn {
     height: 40px;
     font-size: 0.875rem;
+  }
+
+  .print-cover :global(img) {
+    width: 100%;
+    max-height: 95mm;
+    object-fit: cover;
+    border-radius: var(--radius);
+  }
+  .print-contact {
+    margin-top: 28px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+    break-inside: avoid;
+  }
+  .print-contact h2 {
+    font-size: 1.125rem;
+  }
+  .print-contact p {
+    margin: 6px 0 0;
+    overflow-wrap: anywhere;
+  }
+
+  @media print {
+    .head {
+      padding: 0 0 14px;
+    }
+    h1 {
+      font-size: 2.25rem;
+    }
+    .tag {
+      font-size: 1.125rem;
+    }
+    .route {
+      display: none;
+    }
+    .figures {
+      gap: 16px;
+      padding: 22px 0 6px;
+    }
+    .figures strong {
+      font-size: 1.5rem;
+    }
+    .lead {
+      padding-top: 14px;
+      font-size: 1.125rem;
+    }
+    .block {
+      padding-top: 26px;
+      break-inside: avoid;
+    }
+    .block > h2 {
+      margin-bottom: 14px;
+      font-size: 1.25rem;
+    }
+    .includes {
+      gap: 10px;
+    }
+    .inc {
+      gap: 8px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      break-inside: avoid;
+    }
+    .inc strong {
+      font-size: 0.9375rem;
+    }
+    .near {
+      gap: 10px;
+    }
+    .near > div {
+      padding: 14px;
+      break-inside: avoid;
+    }
+    .min {
+      font-size: 1.75rem;
+    }
+    .near li {
+      padding: 3px 10px;
+      border: 1px solid var(--line);
+      font-size: 0.8125rem;
+    }
   }
 
   @media (max-width: 1100px) {
