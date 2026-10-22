@@ -89,6 +89,7 @@ const ldJson = (node: object) => JSON.stringify(node).replace(/</g, '\\u003c');
     display: flex;
     align-items: center;
     gap: 8px;
+    min-height: 44px;
     font-weight: 600;
     font-size: 1.125rem;
     letter-spacing: -0.02em;
@@ -99,6 +100,11 @@ const ldJson = (node: object) => JSON.stringify(node).replace(/</g, '\\u003c');
     color: var(--accent);
   }
   nav a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 44px;
+    min-height: 44px;
     color: var(--muted);
     font-size: 0.9375rem;
   }
