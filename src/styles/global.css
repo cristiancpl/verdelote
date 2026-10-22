@@ -238,6 +238,13 @@ p {
   background: linear-gradient(180deg, rgb(0 0 0 / 0.45) 0%, transparent 22%, transparent 55%, rgb(0 0 0 / 0.78) 100%);
 }
 
+/* En pantallas angostas el texto ocupa más alto: el degradado sube para que el título se lea sobre cielos claros */
+@media (max-width: 700px) {
+  .stage::after {
+    background: linear-gradient(180deg, rgb(0 0 0 / 0.45) 0%, transparent 18%, rgb(0 0 0 / 0.35) 38%, rgb(0 0 0 / 0.86) 100%);
+  }
+}
+
 .stage-ui {
   position: absolute;
   inset: 0;
