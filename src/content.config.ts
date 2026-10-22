@@ -26,6 +26,13 @@ const lotes = defineCollection({
       portada: image().optional(),
       galeria: z.array(z.object({ src: image(), alt: z.string() })).default([]),
       ubicacion: z.object({ src: image(), alt: z.string() }).optional(),
+      contacto: z
+        .object({
+          nombre: z.string(),
+          // Número completo con indicativo, solo dígitos (ej. 573001234567)
+          whatsapp: z.string().regex(/^\d{10,15}$/),
+        })
+        .optional(),
       recorrido: z
         .array(
           z.object({

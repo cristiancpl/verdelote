@@ -39,6 +39,10 @@
     { "src": "../../assets/lotes/mirador-del-valle/llegada-porton.jpg", "alt": "Llegada por la vía en concreto con vista al valle" },
     { "src": "../../assets/lotes/mirador-del-valle/via-arbol.jpg", "alt": "Vía de acceso bajo un árbol grande" }
   ],
+  "contacto": {
+    "nombre": "Andrés",
+    "whatsapp": "573216953286"
+  },
   "ubicacion": {
     "src": "../../assets/lotes/mirador-del-valle/ubicacion-panoramica.jpg",
     "alt": "Vista panorámica de la ladera con el lote señalado en amarillo"

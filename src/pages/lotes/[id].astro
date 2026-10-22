@@ -16,6 +16,11 @@ interface Props {
 const { lote } = Astro.props;
 const d = lote.data;
 const lugar = [d.vereda, d.municipio, d.departamento].filter(Boolean).join(', ');
+const whatsappUrl = d.contacto
+  ? `https://wa.me/${d.contacto.whatsapp}?text=${encodeURIComponent(
+      `Hola ${d.contacto.nombre}, vi el ${d.nombre} en Verdelote y quiero agendar una visita`,
+    )}`
+  : undefined;
 ---
 
 <Base title={`${d.nombre} · Verdelote`} description={d.resumen}>
@@ -102,6 +107,17 @@ const lugar = [d.vereda, d.municipio, d.departamento].filter(Boolean).join(', ')
         <h2>Ubicación</h2>
         <Image src={d.ubicacion.src} alt={d.ubicacion.alt} widths={[640, 1200]} sizes="(max-width: 720px) 100vw, 1120px" />
       </section>
+    )
+  }
+
+  {
+    whatsappUrl && (
+      <div class="cta">
+        <span class="cta-precio">{formatPrecio(d.precio_cop)}</span>
+        <a href={whatsappUrl} target="_blank" rel="noopener">
+          Agendar visita
+        </a>
+      </div>
     )
   }
 </Base>
@@ -217,5 +233,33 @@ const lugar = [d.vereda, d.municipio, d.departamento].filter(Boolean).join(', ')
   }
   section > img {
     border-radius: var(--radius);
+  }
+  .cta {
+    position: sticky;
+    bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    max-width: 480px;
+    margin: 48px auto 0;
+    padding: 10px 10px 10px 20px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg-soft) 85%, transparent);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  }
+  .cta-precio {
+    font-weight: 600;
+  }
+  .cta a {
+    padding: 12px 22px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
   }
 </style>
