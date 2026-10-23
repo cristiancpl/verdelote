@@ -66,6 +66,8 @@ const MUNICIPIO_ENTRADA = 'Guarne';
 // Lotes a menos de 1,5 km entre sí comparten un pin (con el número) hasta que la cámara baja de 25 km
 const VECINOS_M = 1_500;
 const UMBRAL_VECINOS = 25_000;
+// Tiempo con la cámara quieta y sin señal de vida del mapa (gmp-steadychange) antes de ofrecer el respaldo
+const ESPERA_MAPA_MS = 12_000;
 // Giro final del vuelo, como en el video: al final rota 35 grados hasta el rumbo de llegada
 const GIRO_FINAL = -35;
 
@@ -264,7 +266,17 @@ export async function iniciarGlobo() {
   $('[data-video-cerrar]').addEventListener('click', () => dialogo.close());
 
   // Respaldo: sin clave, sin WebGL o con la clave rechazada se ofrece la lista del sitio
+  let sinGlobo = false;
+  // El mapa dio al menos una señal de vida (quedó estable): desde entonces el respaldo no se dispara solo
+  let vivo = false;
+  let pararGlobo = () => {};
   const respaldo = () => {
+    if (sinGlobo) return;
+    sinGlobo = true;
+    pararGlobo();
+    cerrarFicha();
+    delete raiz.dataset.cine;
+    $('[data-etapa]').classList.remove('visible');
     ponerVista('llegada');
     $('[data-explorar]').hidden = true;
     $('[data-respaldo-aviso]').hidden = false;
@@ -276,6 +288,7 @@ export async function iniciarGlobo() {
     respaldo();
     return;
   }
+  // Clave rechazada: gm_authFailure avisa en el mapa clásico; en 3D no siempre, por eso abajo hay más señales
   window.gm_authFailure = respaldo;
 
   try {
@@ -284,8 +297,15 @@ export async function iniciarGlobo() {
     respaldo();
     return;
   }
-  const maps3d = await window.google.maps.importLibrary('maps3d');
-  const { PinElement } = await window.google.maps.importLibrary('marker');
+  let maps3d: any;
+  let PinElement: any;
+  try {
+    maps3d = await window.google.maps.importLibrary('maps3d');
+    ({ PinElement } = await window.google.maps.importLibrary('marker'));
+  } catch {
+    respaldo();
+    return;
+  }
   const { Map3DElement, Polygon3DElement, Polyline3DElement, Marker3DElement } = maps3d;
   const MarcadorClic = maps3d.Marker3DInteractiveElement ?? Marker3DElement;
 
@@ -299,6 +319,56 @@ export async function iniciarGlobo() {
   const ajustarUI = () => (mapa.defaultUIHidden = angosto.matches);
   ajustarUI();
   angosto.addEventListener('change', ajustarUI);
+
+  // Vigilante: si Google rechaza la clave, el 3D muestra su recuadro gris de error y nunca llega a estar estable.
+  // Un mapa sano tampoco avisa que está estable mientras la cámara se mueve (la llegada gira 22 s) ni mientras la
+  // pestaña no dibuja cuadros (segundo plano), así que el reloj solo corre con la página dibujando y la cámara quieta.
+  // Mientras el mapa no dé señal de vida, 12 s así pasan al respaldo; después de una sola señal de vida, jamás
+  let ultimoMovimiento = performance.now();
+  let ultimoCuadro = performance.now();
+  let quietoMs = 0;
+  const latir = () => {
+    ultimoCuadro = performance.now();
+    if (!vivo && !sinGlobo) requestAnimationFrame(latir);
+  };
+  requestAnimationFrame(latir);
+  const sondeo = window.setInterval(() => {
+    const ahora = performance.now();
+    const dibujando = ahora - ultimoCuadro < 1500;
+    const quieto = ahora - ultimoMovimiento > 1500;
+    quietoMs = dibujando && quieto ? quietoMs + 1000 : 0;
+    if (quietoMs >= ESPERA_MAPA_MS) sinSenal();
+  }, 1000);
+  const darPorVivo = () => {
+    vivo = true;
+    window.clearInterval(sondeo);
+    obsRed?.disconnect();
+  };
+  const sinSenal = () => {
+    if (!vivo) respaldo();
+  };
+  ['gmp-centerchange', 'gmp-rangechange', 'gmp-tiltchange', 'gmp-headingchange'].forEach((n) =>
+    mapa.addEventListener(n, () => (ultimoMovimiento = performance.now())),
+  );
+  mapa.addEventListener('gmp-steadychange', (e: any) => e.isSteady && darPorVivo());
+  // Errores explícitos: evento del propio mapa y respuesta 4xx a la configuración del 3D (clave o referer rechazados)
+  mapa.addEventListener('gmp-error', sinSenal);
+  window.google.maps.event?.addListener?.(mapa, 'gmp-error', sinSenal);
+  const rechazada = (e: PerformanceEntry) => {
+    const { name, responseStatus } = e as PerformanceResourceTiming;
+    return /MapsJsInternalService\/GetMap3DConfig/.test(name) && responseStatus >= 400 && responseStatus < 500 && responseStatus !== 429;
+  };
+  let obsRed: PerformanceObserver | undefined;
+  try {
+    obsRed = new PerformanceObserver((lista) => lista.getEntries().some(rechazada) && sinSenal());
+    obsRed.observe({ type: 'resource', buffered: true });
+  } catch {
+    // Navegador sin PerformanceObserver de recursos: quedan las otras señales
+  }
+  pararGlobo = () => {
+    window.clearInterval(sondeo);
+    obsRed?.disconnect();
+  };
 
   // La API renombró outerCoordinates/coordinates a path; se usa lo que exista
   const ruta = (el: any, puntos: object[], viejo: 'outerCoordinates' | 'coordinates') => {
@@ -510,6 +580,11 @@ export async function iniciarGlobo() {
     if (animacion === 'orbita') marcarOrbita(false);
     animacion = 'ninguna';
   };
+  const pararVigilante = pararGlobo;
+  pararGlobo = () => {
+    pararVigilante();
+    detener();
+  };
   const volar = (cam: Camara, ms: number, tipo: typeof animacion = 'vuelo') => {
     detener();
     if (reducido) {
@@ -680,7 +755,7 @@ export async function iniciarGlobo() {
   let girando = !reducido;
   const giroInicio = performance.now();
   const girar = (ahora: number) => {
-    if (!girando || vista !== 'llegada') return;
+    if (!girando || vista !== 'llegada' || sinGlobo) return;
     const t = Math.min(1, (ahora - giroInicio) / 22_000);
     const suave = 1 - (1 - t) ** 3;
     mapa.center = { lat: PLANETA.center.lat, lng: giroDesde + (giroHasta - giroDesde) * suave, altitude: 0 };
