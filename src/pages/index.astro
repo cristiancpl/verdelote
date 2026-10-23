@@ -7,7 +7,7 @@ import { Image, getImage } from 'astro:assets';
 import { getCollection } from 'astro:content';
 import Icon from '../components/Icon.astro';
 import Base from '../layouts/Base.astro';
-import { formatArea, formatPrecio, formatPrecioCorto, formatPrecioM2, nombreCorto, url } from '../lib/format';
+import { formatArea, nombreCorto, url } from '../lib/format';
 import { textoArea, textoPrecio, textoPrecioCorto, textoPrecioDetalle, tieneRecorrido } from '../lib/lote';
 import { zonaDe } from '../lib/zonas';
 
@@ -106,6 +106,7 @@ const config = {
   key: import.meta.env.PUBLIC_GOOGLE_MAPS_KEY ?? '',
   territorios,
   capas: url('capas/'),
+  fichas: url('lotes/'),
   dibujo: import.meta.env.DEV,
   guardar: url('__lindero'),
   lotes: lotes.map((l) => l.cliente),

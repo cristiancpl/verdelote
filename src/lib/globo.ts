@@ -36,6 +36,8 @@ interface ConfigGlobo {
   key: string;
   territorios: Territorio[];
   capas: string;
+  /** Base de las fichas completas: <fichas><id>/ */
+  fichas: string;
   dibujo: boolean;
   guardar: string;
   lotes: LoteGlobo[];
@@ -831,6 +833,11 @@ export async function iniciarGlobo() {
   const irLote = (id: string) => {
     const l = porId.get(id);
     if (!l) return;
+    // Segundo clic sobre el lote que ya está abierto: lleva a su ficha completa
+    if (abierto === id && vista === 'lote' && !dibujando) {
+      location.href = `${cfg.fichas}${id}/`;
+      return;
+    }
     girando = false;
     orbitaDetenida = false;
     zonaActual = l.zona.id;

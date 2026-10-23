@@ -59,8 +59,6 @@ const lotes = defineCollection({
           etapas: z.array(z.object({ nombre: z.string(), desde_s: z.number().min(0) })).min(1),
         })
         .optional(),
-      // Corte corto en bucle para el hero del listado cuando no hay vuelo (ruta dentro de public/)
-      teaser: z.string().optional(),
       // Versión vertical (9:16) del recorrido para redes y WhatsApp (ruta dentro de public/)
       video_vertical: z.string().optional(),
       // Punto del lote para "Cómo llegar"; aproximadas: true avisa que no es el punto exacto

@@ -2,12 +2,12 @@
 import { getImage } from 'astro:assets';
 import { getCollection } from 'astro:content';
 import Icon from '../../components/Icon.astro';
-import antioquia3d from '../../assets/globo/antioquia.jpg';
+import vistaPrevia from '../../assets/globo/vista-previa.jpg';
 import LoteCard from '../../components/LoteCard.astro';
 import PauseButton from '../../components/PauseButton.astro';
 import Base from '../../layouts/Base.astro';
-import { absoluteUrl, formatArea, formatPrecio, formatPrecioCorto, formatPrecioM2, nombreCorto, url } from '../../lib/format';
-import { primerClip, textoArea, textoPrecio, textoPrecioCorto, textoPrecioDetalle } from '../../lib/lote';
+import { absoluteUrl, nombreCorto, url } from '../../lib/format';
+import { primerClip, textoArea, textoPrecioCorto, textoPrecioDetalle } from '../../lib/lote';
 
 const lotes = (await getCollection('lotes')).sort((a, b) => a.data.orden - b.data.orden);
 const destacado = lotes.find((l) => l.data.destacado);
@@ -44,8 +44,8 @@ const listado = {
 };
 const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) => a.localeCompare(b, 'es'));
 
-// Bloque "Antioquia, en 3D": cuadro de Antioquia del vuelo publicado (Earth Studio, con su atribución)
-const img3d = await getImage({ src: antioquia3d, width: 2000, format: 'webp' });
+// Bloque "Antioquia, en 3D": captura del propio globo con los municipios y pines de los lotes (atribución de Google incluida)
+const img3d = await getImage({ src: vistaPrevia, width: 2000, format: 'webp' });
 ---
 
 <Base
@@ -115,6 +115,7 @@ const img3d = await getImage({ src: antioquia3d, width: 2000, format: 'webp' });
   <section class="wrap band3d-wrap" aria-labelledby="titulo-3d">
     <a class="band3d reveal" href={url()}>
       <img src={img3d.src} alt="" loading="lazy" decoding="async" />
+      <span class="atrib">Imagen: Google Maps</span>
       <div class="txt">
         <h2 id="titulo-3d">Antioquia, en 3D.</h2>
         <p>Vuela hasta cada lote, mira el terreno y su entorno, y abre la ficha sin salir del mapa</p>
@@ -275,12 +276,6 @@ const img3d = await getImage({ src: antioquia3d, width: 2000, format: 'webp' });
 </script>
 
 <style>
-  .lg {
-    display: inline;
-  }
-  .sm {
-    display: none;
-  }
 
   /* Portada: lado derecho libre para la marca de Google Earth del video */
   .cabecera {
@@ -302,130 +297,7 @@ const img3d = await getImage({ src: antioquia3d, width: 2000, format: 'webp' });
     font-size: clamp(1.0625rem, 1.5vw, 1.25rem);
   }
 
-  /* Portada: título y acciones abajo a la izquierda, sobre un velo; queda hasta la llegada al lote */
-  .intro {
-    position: absolute;
-    inset: 0;
-    z-index: 3;
-    display: grid;
-    align-content: end;
-    justify-items: start;
-    gap: 18px;
-    max-width: calc(var(--max) + 2 * var(--gutter));
-    margin: 0 auto;
-    padding: 0 var(--gutter) 190px;
-    text-shadow: 0 2px 30px rgb(0 0 0 / 0.45);
-    transition: opacity 1.2s var(--ease), visibility 1.2s;
-    pointer-events: none;
-  }
-  .intro > * {
-    pointer-events: auto;
-    max-width: 760px;
-  }
-  .hero::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    pointer-events: none;
-    background:
-      linear-gradient(180deg, rgb(0 0 0 / 0.45) 0%, rgb(0 0 0 / 0) 22%),
-      linear-gradient(90deg, rgb(11 12 13 / 0.72) 0%, rgb(11 12 13 / 0) 58%),
-      linear-gradient(0deg, rgb(11 12 13 / 0.6) 0%, rgb(11 12 13 / 0) 40%);
-  }
-  .intro h1 {
-    font-size: clamp(2.75rem, 5.4vw, 5rem);
-    line-height: 1.02;
-    letter-spacing: -0.045em;
-    padding-bottom: 2px;
-  }
-  .intro h1 span {
-    display: block;
-    color: rgb(244 245 243 / 0.58);
-  }
-  .intro p {
-    font-size: clamp(1.0625rem, 1.5vw, 1.25rem);
-    color: rgb(255 255 255 / 0.85);
-  }
-  .intro .actions {
-    margin-top: 8px;
-    text-shadow: none;
-  }
-  .intro-out .intro {
-    opacity: 0;
-    visibility: hidden;
-  }
-  .ctl {
-    position: absolute;
-    right: var(--gutter);
-    top: calc(var(--nav-h) + 24px);
-    z-index: 3;
-  }
-  .ctl :global(.pause) {
-    position: static;
-  }
 
-  .arrive {
-    display: grid;
-    gap: 22px;
-    max-width: 760px;
-    opacity: 0;
-    visibility: hidden;
-    transform: translateY(18px);
-    transition: opacity 0.9s var(--ease), transform 0.9s var(--ease), visibility 0s 0.9s;
-  }
-  .llegada .arrive {
-    opacity: 1;
-    visibility: visible;
-    transform: none;
-    transition: opacity 0.9s var(--ease), transform 0.9s var(--ease), visibility 0s;
-  }
-  .arrive h2 {
-    font-size: clamp(2.2rem, 5vw, 4.5rem);
-    line-height: 1;
-  }
-  .meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 22px;
-    margin-top: 14px;
-    font-size: 1.125rem;
-    color: rgb(255 255 255 / 0.88);
-  }
-  .meta span {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-
-  .journey {
-    display: grid;
-    grid-template-columns: repeat(var(--n), 1fr);
-    gap: 8px;
-    max-width: 74%;
-    margin-top: 36px;
-  }
-  .journey div {
-    font-size: 0.8125rem;
-    color: rgb(255 255 255 / 0.6);
-    transition: color 0.4s;
-  }
-  .journey div::before {
-    content: '';
-    display: block;
-    height: 3px;
-    margin-bottom: 10px;
-    border-radius: 3px;
-    background: linear-gradient(90deg, #fff var(--p, 0%), rgb(255 255 255 / 0.22) var(--p, 0%));
-  }
-  .journey div.on {
-    color: #fff;
-  }
 
   /* Destacado */
   .featured {
@@ -544,6 +416,15 @@ const img3d = await getImage({ src: antioquia3d, width: 2000, format: 'webp' });
   }
   .band3d .btn {
     margin-top: 6px;
+  }
+  /* El degradado tapa el logo de Google de la captura: la atribución queda visible encima */
+  .band3d .atrib {
+    position: absolute;
+    z-index: 1;
+    right: 20px;
+    bottom: 14px;
+    font-size: 0.75rem;
+    color: rgb(255 255 255 / 0.75);
   }
 
   /* Lotes y filtros */
@@ -743,28 +624,8 @@ const img3d = await getImage({ src: antioquia3d, width: 2000, format: 'webp' });
     .filters {
       justify-content: flex-start;
     }
-    .ctl {
-      right: var(--gutter);
-    }
   }
   @media (max-width: 700px) {
-    .lg {
-      display: none;
-    }
-    .sm {
-      display: inline;
-    }
-    .journey {
-      max-width: 100%;
-      margin-top: 28px;
-      gap: 6px;
-    }
-    .journey div {
-      font-size: 0.6875rem;
-    }
-    .meta {
-      font-size: 1rem;
-    }
     .grid {
       grid-template-columns: 1fr;
       padding-bottom: 72px;

@@ -44,11 +44,15 @@ const esVertical = (m: ImageMetadata) => m.height > m.width;
 // Selector de lote
 const unidades = d.unidades;
 const rangoPrecio = Boolean(d.precio_cop && d.precio_max_cop);
-const subtituloSelector = d.contacto
-  ? rangoPrecio
-    ? `Precios ${textoPrecioCorto(d).replace(/^D/, 'd')}. El precio de cada lote se consulta con ${d.contacto.nombre}.`
-    : `El precio de cada lote se consulta con ${d.contacto.nombre}.`
-  : '';
+// Si todas las unidades tienen precio, no hace falta decir que se consulta
+const todasConPrecio = unidades.length > 0 && unidades.every((u) => u.precio_cop);
+const subtituloSelector = todasConPrecio
+  ? 'Compara el área de cada lote y consulta por el que te interesa.'
+  : d.contacto
+    ? rangoPrecio
+      ? `Precios ${textoPrecioCorto(d).replace(/^D/, 'd')}. El precio de cada lote se consulta con ${d.contacto.nombre}.`
+      : `El precio de cada lote se consulta con ${d.contacto.nombre}.`
+    : '';
 const spanUnidad = (i: number) => {
   const porFila = unidades.length === 4 ? 2 : 3;
   const resto = Math.min(porFila, unidades.length - Math.floor(i / porFila) * porFila);
@@ -228,6 +232,10 @@ const fichaLd = {
   imageAlt={d.nombre}
   jsonLd={d.demo ? undefined : fichaLd}
 >
+  <a slot="nav-right" class="btn btn-glass btn-sm" href={url(`#${lote.id}`)} data-mapa>
+    <Icon name="globe-hemisphere-west" />
+    Ver en el mapa 3D
+  </a>
   <button
     slot="nav-right"
     type="button"
@@ -243,13 +251,16 @@ const fichaLd = {
 
   <div class="bar no-print" slot="localbar" data-bar>
     <div class="wrap">
-      <a class="back" href={url('lotes/')} aria-label="Volver a los lotes"><Icon name="caret-left" /><span>Lotes</span></a>
+      <a class="back" href={url('lotes/')} aria-label="Volver a los lotes" data-volver-ficha><Icon name="caret-left" /><span>Lotes</span></a>
       <span class="name">{d.nombre}</span>
       <div class="right">
         <div class="pricebox">
           <span class="price">{textoPrecio(d)}</span>
           <small>{precioM2}</small>
         </div>
+        <a class="icon-btn sm" href={url(`#${lote.id}`)} aria-label="Ver este lote en el mapa 3D" title="Ver en el mapa 3D">
+          <Icon name="globe-hemisphere-west" />
+        </a>
         <button
           type="button"
           class="icon-btn sm"
@@ -847,6 +858,21 @@ const fichaLd = {
   initPauseButtons();
   initShare();
   initPrint();
+
+  // Si se llegó desde el globo (inicio), "volver" regresa al mapa sobre este lote y no a la lista
+  const volver = document.querySelector<HTMLAnchorElement>('[data-volver-ficha]');
+  const mapa = document.querySelector<HTMLAnchorElement>('[data-mapa]');
+  try {
+    const ref = document.referrer ? new URL(document.referrer) : undefined;
+    const inicio = new URL(import.meta.env.BASE_URL.replace(/\/?$/, '/'), location.origin).pathname;
+    if (volver && mapa && ref && ref.origin === location.origin && ref.pathname === inicio) {
+      volver.href = mapa.href;
+      volver.setAttribute('aria-label', 'Volver al mapa 3D');
+      volver.querySelector('span')!.textContent = 'Mapa 3D';
+    }
+  } catch {
+    // referrer inválido: se queda el enlace a la lista
+  }
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // Portada: el video solo corre mientras se ve

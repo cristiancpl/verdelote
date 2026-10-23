@@ -7,7 +7,7 @@
   "vereda": "Vereda Mercedes Ábrego",
   "area_m2": 3800,
   "explanacion_m2": 1000,
-  "precio_cop": 250000000,
+  "precio_cop": 260000000,
   "estado": "disponible",
   "destacado": false,
   "demo": false,
@@ -132,7 +132,6 @@
       }
     ]
   },
-  "teaser": "lotes/mirador-del-norte/teaser.mp4",
   "video_vertical": "lotes/mirador-del-norte/recorrido-vertical.mp4",
   "coordenadas": {
     "lat": 6.407989,

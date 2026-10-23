@@ -29,6 +29,8 @@ export const textoPrecioCorto = (d: Datos) =>
 export const textoPrecioDetalle = (d: Datos) =>
   !d.precio_cop
     ? 'Pregunta por WhatsApp'
-    : d.precio_max_cop
+    : d.area_max_m2 && !d.precio_max_cop
+      ? 'Precio por lote'
+      : d.precio_max_cop
     ? `${formatPrecioCorto(d.precio_cop)} a ${formatPrecioCorto(d.precio_max_cop)}`
     : formatPrecioM2(d.precio_cop, d.area_m2);
