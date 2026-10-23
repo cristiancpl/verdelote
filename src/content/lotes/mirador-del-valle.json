@@ -203,5 +203,13 @@
       "media": "../../assets/lotes/mirador-del-valle/portada-explanacion-valle.jpg"
     }
   ],
-  "foto_mosaico": 5
+  "foto_mosaico": 5,
+  "mapa": {
+    "alt": 1538,
+    "camara": {
+      "range": 470,
+      "tilt": 64,
+      "heading": 340
+    }
+  }
 }

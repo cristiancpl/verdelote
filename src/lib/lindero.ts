@@ -1,8 +1,8 @@
-// Dibujo del lindero sobre el globo: clic en cada esquina, deshacer, borrar y guardar.
-// En desarrollo guarda en public/capas/lindero-<slug>.geojson (plugin en astro.config.mjs);
+// Dibujo del lindero sobre el globo (solo en desarrollo): clic en cada esquina, deshacer, borrar y guardar.
+// Guarda en public/capas/lindero-<slug>.geojson con el plugin de astro.config.mjs;
 // si el guardado falla, copia el GeoJSON al portapapeles
 
-type LatLng = { lat: number; lng: number };
+export type LatLng = { lat: number; lng: number };
 
 /** Área en m² con proyección local equirectangular (suficiente para lotes de pocas hectáreas) */
 export function areaM2(puntos: LatLng[]) {
@@ -38,29 +38,34 @@ export function geojsonLindero(slug: string, puntos: LatLng[]) {
 
 interface OpcionesDibujo {
   mapa: any;
-  slug: string;
   urlGuardar: string;
-  /** Pinta el contorno en el globo */
-  pintar: (puntos: LatLng[]) => void;
-  /** Contorno vigente, para cancelar sin cambios */
+  /** Lote abierto en la ficha */
+  slug: () => string | undefined;
+  /** Lindero vigente del lote abierto */
   actual: () => LatLng[];
-  /** Antes y después de dibujar (ocultar marcador, cambiar vista) */
+  /** Pinta el contorno en el globo mientras se dibuja */
+  pintar: (puntos: LatLng[]) => void;
+  /** Lindero guardado: el globo lo adopta como vigente */
+  alGuardar: (puntos: LatLng[]) => void;
+  /** Antes y después de dibujar (vista cenital, ocultar marcadores) */
   alEntrar: () => void;
   alSalir: () => void;
   crearVertice: (p: LatLng) => HTMLElement;
 }
 
 export function iniciarDibujo(o: OpcionesDibujo) {
-  const $ = (s: string) => document.querySelector<HTMLElement>(s)!;
-  const caja = $('[data-dibujo]');
+  const caja = document.querySelector<HTMLElement>('[data-dibujo]');
+  if (!caja) return { refrescar: () => {}, cancelar: () => {} };
+  const $ = (s: string) => caja.querySelector<HTMLElement>(s)!;
   const info = $('[data-dibujo-info]');
-  const btnDibujar = $('[data-dibujo="iniciar"]');
   let activo = false;
   let puntos: LatLng[] = [];
   let vertices: HTMLElement[] = [];
 
-  const resumen = (pts: LatLng[]) =>
-    pts.length < 3 ? `${pts.length} esquinas · faltan ${3 - pts.length}` : `${pts.length} esquinas · ${formatM2(areaM2(pts))}`;
+  const reposo = () => {
+    const pts = o.actual();
+    info.textContent = pts.length ? `Lindero actual: ${formatM2(areaM2(pts))}` : 'Sin lindero dibujado';
+  };
 
   const refrescar = () => {
     vertices.forEach((v) => v.remove());
@@ -70,7 +75,8 @@ export function iniciarDibujo(o: OpcionesDibujo) {
       return v;
     });
     o.pintar(puntos);
-    info.textContent = activo ? resumen(puntos) : `Lindero actual · ${formatM2(areaM2(o.actual()))}`;
+    info.textContent =
+      puntos.length < 3 ? `${puntos.length} esquinas, faltan ${3 - puntos.length}` : `${puntos.length} esquinas: ${formatM2(areaM2(puntos))}`;
   };
 
   const salir = () => {
@@ -79,57 +85,56 @@ export function iniciarDibujo(o: OpcionesDibujo) {
     vertices.forEach((v) => v.remove());
     vertices = [];
     o.pintar(o.actual());
-    info.textContent = `Lindero actual · ${formatM2(areaM2(o.actual()))}`;
+    reposo();
     o.alSalir();
   };
 
   o.mapa.addEventListener('gmp-click', (e: any) => {
     if (!activo || !e.position) return;
-    e.preventDefault?.();
     puntos.push({ lat: e.position.lat, lng: e.position.lng });
     refrescar();
   });
 
-  btnDibujar.addEventListener('click', () => {
+  $('[data-dibujo-accion="iniciar"]').addEventListener('click', () => {
+    if (!o.slug()) return;
     activo = true;
     puntos = [];
     caja.dataset.estado = 'dibujando';
     o.alEntrar();
     refrescar();
   });
-  $('[data-dibujo="deshacer"]').addEventListener('click', () => {
+  $('[data-dibujo-accion="deshacer"]').addEventListener('click', () => {
     puntos.pop();
     refrescar();
   });
-  $('[data-dibujo="borrar"]').addEventListener('click', () => {
+  $('[data-dibujo-accion="borrar"]').addEventListener('click', () => {
     puntos = [];
     refrescar();
   });
-  $('[data-dibujo="cancelar"]').addEventListener('click', salir);
-  $('[data-dibujo="guardar"]').addEventListener('click', async () => {
-    if (puntos.length < 3) {
+  $('[data-dibujo-accion="cancelar"]').addEventListener('click', salir);
+  $('[data-dibujo-accion="guardar"]').addEventListener('click', async () => {
+    const slug = o.slug();
+    if (!slug || puntos.length < 3) {
       info.textContent = 'Marca al menos 3 esquinas';
       return;
     }
-    const geo = geojsonLindero(o.slug, puntos);
-    const texto = JSON.stringify(geo);
-    try {
-      localStorage.setItem(`lindero-${o.slug}`, texto);
-    } catch {}
+    const texto = JSON.stringify(geojsonLindero(slug, puntos));
     let guardado = false;
     try {
       const r = await fetch(o.urlGuardar, { method: 'POST', headers: { 'content-type': 'application/json' }, body: texto });
       guardado = r.ok;
-    } catch {}
+    } catch {
+      guardado = false;
+    }
     const final = puntos.slice();
-    o.actual = () => final;
+    o.alGuardar(final);
     salir();
-    if (guardado) info.textContent = `Guardado · ${formatM2(areaM2(final))}`;
+    if (guardado) info.textContent = `Guardado: ${formatM2(areaM2(final))}`;
     else {
       await navigator.clipboard?.writeText(texto).catch(() => {});
-      info.textContent = `No se pudo guardar en el repo. Copié las coordenadas: pégalas en el chat`;
+      info.textContent = 'No se pudo guardar en el proyecto. Copié las coordenadas para pegarlas en el chat';
     }
   });
 
-  info.textContent = `Lindero actual · ${formatM2(areaM2(o.actual()))}`;
+  return { refrescar: reposo, cancelar: () => activo && salir() };
 }

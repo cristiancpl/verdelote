@@ -1,36 +1,58 @@
-// Prueba técnica del globo (fase 1): carga Maps 3D, dibuja capas y vuela al lote.
+// Globo de Verdelote: llegada con el planeta girando, vista Antioquia con zonas, vista zona con lotes,
+// vuelo al lote con ficha lateral y órbita. La lista y los filtros funcionan también sin el globo (respaldo).
 // API: https://developers.google.com/maps/documentation/javascript/3d-maps-overview
-import { iniciarDibujo } from './lindero';
+import { iniciarDibujo, type LatLng } from './lindero';
+
+interface LoteGlobo {
+  id: string;
+  nombre: string;
+  municipio: string;
+  zona: { id: string; nombre: string };
+  lat: number;
+  lng: number;
+  alt: number;
+  camara?: { range: number; tilt: number; heading: number };
+  area: number;
+  precio: number;
+  precioCorto: string;
+  estado: 'disponible' | 'reservado' | 'vendido';
+  demo: boolean;
+  recorrido: boolean;
+  lindero: LatLng[];
+}
 
 interface ConfigGlobo {
   key: string;
   capas: string;
-  /** Herramienta de dibujo del lindero (solo en desarrollo) y URL donde se guarda */
   dibujo: boolean;
   guardar: string;
-  lote: {
-    slug: string;
-    nombre: string;
-    precio: string;
-    lat: number;
-    lng: number;
-    alt: number;
-    camara: { range: number; tilt: number; heading: number };
-    contorno: [number, number][];
-  };
+  lotes: LoteGlobo[];
 }
 
-type LatLngAlt = { lat: number; lng: number; altitude: number };
-type Camara = { center: LatLngAlt; range: number; tilt: number; heading: number };
+type Vista = 'llegada' | 'mapa' | 'zona' | 'lote';
+type Camara = { center: { lat: number; lng: number; altitude: number }; range: number; tilt: number; heading: number };
 
 declare global {
   interface Window {
-    VERDELOTE_GLOBO: ConfigGlobo;
     google: any;
+    gm_authFailure?: () => void;
   }
 }
 
-/** Cargador oficial de la API (bootstrap dinámico), sin dependencias */
+const VERDE = '#6cc17a';
+const TINTA = '#08130b';
+const AMBAR = '#e3b65c';
+// Desde qué distancia de cámara se ven los lotes en lugar de las zonas, y hasta cuándo hay etiquetas de Google
+const UMBRAL_LOTES = 160_000;
+const UMBRAL_ETIQUETAS = 1_500_000;
+
+const PLANETA: Camara = { center: { lat: 4.5, lng: -74, altitude: 0 }, range: 17_000_000, tilt: 0, heading: 0 };
+const ANTIOQUIA: Camara = { center: { lat: 6.3, lng: -75.47, altitude: 0 }, range: 230_000, tilt: 32, heading: 0 };
+
+const $ = <T extends HTMLElement = HTMLElement>(s: string, raiz: ParentNode = document) => raiz.querySelector<T>(s)!;
+const $$ = <T extends HTMLElement = HTMLElement>(s: string, raiz: ParentNode = document) => [...raiz.querySelectorAll<T>(s)];
+
+/** Cargador oficial de la API (bootstrap con callback), sin dependencias */
 function cargarMaps(key: string): Promise<void> {
   if (window.google?.maps?.importLibrary) return Promise.resolve();
   return new Promise((resolve, reject) => {
@@ -44,173 +66,476 @@ function cargarMaps(key: string): Promise<void> {
   });
 }
 
-const VISTAS: Record<string, Camara> = {
-  planeta: { center: { lat: 4.5, lng: -74, altitude: 0 }, range: 16_000_000, tilt: 0, heading: 0 },
-  colombia: { center: { lat: 4.2, lng: -73.5, altitude: 0 }, range: 2_600_000, tilt: 0, heading: 0 },
-  antioquia: { center: { lat: 6.7, lng: -75.6, altitude: 0 }, range: 520_000, tilt: 25, heading: 0 },
+const soportaWebGL = () => {
+  try {
+    return Boolean(document.createElement('canvas').getContext('webgl2'));
+  } catch {
+    return false;
+  }
 };
 
-/** Lee los anillos exteriores de un GeoJSON de public/capas como [{lat, lng}] */
-async function anillos(base: string, nombre: string) {
-  const geo = await fetch(`${base}${nombre}.geojson`).then((r) => r.json());
-  return geo.features.flatMap((f: any) =>
-    f.geometry.coordinates.map((poly: number[][][]) => poly[0].map(([lng, lat]) => ({ lat, lng }))),
-  );
+const normalizar = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+/** Distancia aproximada en metros entre dos puntos cercanos */
+const metros = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
+  const k = Math.cos(((a.lat + b.lat) / 2) * (Math.PI / 180));
+  return Math.hypot((a.lat - b.lat) * 110_574, (a.lng - b.lng) * 111_320 * k);
+};
+
+/** Cámara que encuadra un grupo de lotes */
+function camaraGrupo(lotes: LoteGlobo[]): Camara {
+  const lat = lotes.reduce((s, l) => s + l.lat, 0) / lotes.length;
+  const lng = lotes.reduce((s, l) => s + l.lng, 0) / lotes.length;
+  const radio = Math.max(0, ...lotes.map((l) => metros({ lat, lng }, l)));
+  return { center: { lat, lng, altitude: 0 }, range: Math.min(110_000, Math.max(22_000, radio * 3.4 + 14_000)), tilt: 50, heading: 0 };
 }
 
-/** La API renombró outerCoordinates/coordinates a path; se usa lo que exista */
-function asignarRuta(el: any, ruta: object[], viejo: 'outerCoordinates' | 'coordinates') {
-  if ('path' in el) el.path = ruta;
-  else el[viejo] = ruta;
-}
+const camaraLote = (l: LoteGlobo): Camara => ({
+  center: { lat: l.lat, lng: l.lng, altitude: l.alt },
+  ...(l.camara ?? { range: 650, tilt: 60, heading: 0 }),
+});
 
-export async function iniciarGlobo(contenedor: HTMLElement, medidas: HTMLElement) {
-  const cfg = window.VERDELOTE_GLOBO;
-  const log = (t: string) => (medidas.textContent = t);
-  if (!cfg.key) {
-    log('Falta PUBLIC_GOOGLE_MAPS_KEY en .env');
-    return;
-  }
+export async function iniciarGlobo() {
+  const cfg: ConfigGlobo = JSON.parse($('#globo-config').textContent ?? '{}');
+  const raiz = $('[data-globo]');
+  const reducido = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const porId = new Map(cfg.lotes.map((l) => [l.id, l]));
+  const zonas = [...new Map(cfg.lotes.map((l) => [l.zona.id, l.zona])).values()];
+  const linderos = new Map(cfg.lotes.map((l) => [l.id, l.lindero]));
 
-  const t0 = performance.now();
-  await cargarMaps(cfg.key);
-  const maps3d = await window.google.maps.importLibrary('maps3d');
-  const { Map3DElement, Polygon3DElement, Polyline3DElement } = maps3d;
-  const Marcador = maps3d.Marker3DInteractiveElement ?? maps3d.Marker3DElement;
+  let vista: Vista = 'llegada';
+  let abierto: string | undefined;
+  let zonaActual: string | undefined;
+  const pasa = new Set(cfg.lotes.map((l) => l.id));
 
-  const mapa = new Map3DElement({ ...VISTAS.planeta, mode: 'HYBRID' });
-  contenedor.append(mapa);
-  (window as any).mapa = mapa;
-
-  const { lote } = cfg;
-  const centroLote = { lat: lote.lat, lng: lote.lng, altitude: lote.alt };
-  const camaraLote: Camara = { center: centroLote, ...lote.camara };
-
-  // Capas: país y departamento como línea sobre el terreno; municipio y lote como polígonos
-  const linea = (ruta: object[], color: string, ancho: number) => {
-    const el = new Polyline3DElement({ altitudeMode: 'CLAMP_TO_GROUND', strokeColor: color, strokeWidth: ancho, drawsOccludedSegments: true });
-    asignarRuta(el, ruta, 'coordinates');
-    mapa.append(el);
+  const ponerVista = (v: Vista) => {
+    vista = v;
+    raiz.dataset.vista = v;
   };
-  const [colombia, antioquia, girardota] = await Promise.all(
-    ['colombia', 'antioquia', 'girardota'].map((n) => anillos(cfg.capas, n)),
-  );
-  colombia.forEach((r: object[]) => linea(r, 'rgba(255,255,255,0.9)', 3));
-  antioquia.forEach((r: object[]) => linea(r, 'rgba(255,255,255,0.7)', 2));
-  girardota.forEach((r: object[]) => linea(r, 'rgba(108,193,122,0.9)', 2));
 
-  const poligono = new Polygon3DElement({
-    altitudeMode: 'CLAMP_TO_GROUND',
-    strokeColor: 'rgba(108,193,122,1)',
-    strokeWidth: 4,
-    fillColor: 'rgba(108,193,122,0.28)',
-    drawsOccludedSegments: true,
-  });
-  // Lindero dibujado en el globo (public/capas/lindero-<slug>.geojson); si no existe, el contorno aproximado
-  let contorno = lote.contorno.map(([lng, lat]) => ({ lat, lng }));
-  try {
-    const r = await fetch(`${cfg.capas}lindero-${lote.slug}.geojson?v=${Date.now()}`);
-    if (r.ok) {
-      const geo = await r.json();
-      contorno = geo.features[0].geometry.coordinates[0].slice(0, -1).map(([lng, lat]: number[]) => ({ lat, lng }));
+  // Lista y filtros: funcionan con o sin globo
+  const buscar = $<HTMLInputElement>('[data-buscar]');
+  const fMunicipio = $<HTMLSelectElement>('[data-f-municipio]');
+  const fArea = $<HTMLSelectElement>('[data-f-area]');
+  const fPrecio = $<HTMLSelectElement>('[data-f-precio]');
+  const fRecorrido = $<HTMLInputElement>('[data-f-recorrido]');
+  let alFiltrar = () => {};
+
+  const filtrar = () => {
+    const q = normalizar(buscar.value.trim());
+    const area = Number(fArea.value) || 0;
+    const precio = Number(fPrecio.value) || Infinity;
+    pasa.clear();
+    for (const l of cfg.lotes) {
+      const ok =
+        (!q || normalizar(`${l.nombre} ${l.municipio} ${l.zona.nombre}`).includes(q)) &&
+        (!fMunicipio.value || l.municipio === fMunicipio.value) &&
+        l.area >= area &&
+        l.precio <= precio &&
+        (!fRecorrido.checked || l.recorrido);
+      if (ok) pasa.add(l.id);
+      $(`[data-item="${l.id}"]`).hidden = !ok;
     }
-  } catch {}
-  const pintarLindero = (pts: { lat: number; lng: number }[]) => {
-    asignarRuta(poligono, pts.length ? pts : [], 'outerCoordinates');
-    if (!poligono.isConnected && pts.length) mapa.append(poligono);
+    for (const z of zonas) {
+      const n = cfg.lotes.filter((l) => l.zona.id === z.id && pasa.has(l.id)).length;
+      $(`[data-grupo="${z.id}"]`).hidden = n === 0;
+      $(`[data-grupo="${z.id}"] [data-grupo-n]`).textContent = n === 1 ? '1 lote' : `${n} lotes`;
+    }
+    $('[data-conteo]').textContent = pasa.size === 1 ? '1 lote' : `${pasa.size} lotes`;
+    $('[data-vacio]').hidden = pasa.size > 0;
+    const activos = [fMunicipio.value, fArea.value, fPrecio.value, fRecorrido.checked].filter(Boolean).length;
+    const n = $('[data-filtros-n]');
+    n.hidden = activos === 0;
+    n.textContent = String(activos);
+    alFiltrar();
   };
-  pintarLindero(contorno);
-
-  const marcador = new Marcador({
-    position: { lat: lote.lat, lng: lote.lng, altitude: 60 },
-    altitudeMode: 'RELATIVE_TO_GROUND',
-    extruded: true,
-    label: `${lote.nombre.replace(/^Lote\s+/, '')} · ${lote.precio}`,
+  [buscar, fMunicipio, fArea, fPrecio, fRecorrido].forEach((el) => el.addEventListener('input', filtrar));
+  $('[data-limpiar]').addEventListener('click', () => {
+    buscar.value = '';
+    fMunicipio.value = fArea.value = fPrecio.value = '';
+    fRecorrido.checked = false;
+    filtrar();
   });
-  mapa.append(marcador);
-
-  // Vuelo y medidas
-  let vueloInicio = 0;
-  const volar = (cam: Camara, ms = 3500) => {
-    mapa.stopCameraAnimation?.();
-    vueloInicio = performance.now();
-    mapa.flyCameraTo({ endCamera: cam, durationMillis: ms });
-  };
-  const irLote = () => {
-    volar(camaraLote, 4000);
-    history.replaceState(null, '', `#${lote.slug}`);
-  };
-  const orbitar = () => mapa.flyCameraAround({ camera: camaraLote, durationMillis: 40_000, repeatCount: 1, rounds: 1 });
-
-  marcador.addEventListener('gmp-click', irLote);
-  mapa.addEventListener('gmp-animationend', () => {
-    if (vueloInicio) estado.ultimoVuelo = `${((performance.now() - vueloInicio) / 1000).toFixed(1)} s`;
-    vueloInicio = 0;
+  const btnFiltros = $('[data-filtros-toggle]');
+  btnFiltros.addEventListener('click', () => {
+    const abrir = btnFiltros.getAttribute('aria-expanded') !== 'true';
+    btnFiltros.setAttribute('aria-expanded', String(abrir));
+    $('[data-filtros]').hidden = !abrir;
   });
-  document.querySelectorAll<HTMLButtonElement>('[data-ir]').forEach((b) =>
+  const rail = $('[data-rail]');
+  const btnRail = $('[data-rail-toggle]');
+  btnRail.addEventListener('click', () => {
+    const plegar = !rail.hasAttribute('data-plegado');
+    rail.toggleAttribute('data-plegado', plegar);
+    btnRail.setAttribute('aria-expanded', String(!plegar));
+  });
+  filtrar();
+
+  const migaZona = $('[data-miga-zona]');
+  const ponerMiga = (zonaId?: string) => {
+    const z = zonas.find((x) => x.id === zonaId);
+    migaZona.hidden = !z;
+    migaZona.textContent = z?.nombre ?? '';
+  };
+
+  // Ficha lateral
+  const ficha = $('[data-ficha]');
+  let alAbrir = (_id: string) => {};
+  let alCerrar = () => {};
+  const abrirFicha = (id: string) => {
+    abierto = id;
+    ficha.hidden = false;
+    $$('[data-ficha-lote]').forEach((a) => (a.hidden = a.dataset.fichaLote !== id));
+    $$('[data-abrir]').forEach((b) => b.setAttribute('aria-current', String(b.dataset.abrir === id)));
+    const h2 = $(`[data-ficha-lote="${id}"] h2`);
+    h2.tabIndex = -1;
+    h2.focus({ preventScroll: true });
+    ficha.scrollTop = 0;
+    alAbrir(id);
+  };
+  const cerrarFicha = () => {
+    if (!abierto) return;
+    const previo = abierto;
+    abierto = undefined;
+    ficha.hidden = true;
+    $$('[data-abrir]').forEach((b) => b.setAttribute('aria-current', 'false'));
+    $(`[data-abrir="${previo}"]`)?.focus({ preventScroll: true });
+    alCerrar();
+  };
+
+  // Recorrido en video
+  const dialogo = $<HTMLDialogElement>('[data-video]');
+  const video = $<HTMLVideoElement>('[data-video-el]');
+  $$('[data-recorrido]').forEach((b) =>
     b.addEventListener('click', () => {
-      const ir = b.dataset.ir!;
-      if (ir === 'lote') irLote();
-      else if (ir === 'orbita') orbitar();
-      else volar(VISTAS[ir]);
+      video.poster = b.dataset.poster ?? '';
+      video.src = b.dataset.recorrido!;
+      dialogo.showModal();
+      video.play().catch(() => {});
     }),
   );
-
-  const estado = { fps: 0, ultimoVuelo: '-', carga: '' };
-  mapa.addEventListener('gmp-steadychange', (e: any) => {
-    if (e.isSteady && !estado.carga) estado.carga = `${((performance.now() - t0) / 1000).toFixed(1)} s`;
+  dialogo.addEventListener('close', () => {
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
   });
-  let cuadros = 0;
-  let marca = performance.now();
-  const medir = (ahora: number) => {
-    cuadros++;
-    if (ahora - marca >= 1000) {
-      estado.fps = Math.round((cuadros * 1000) / (ahora - marca));
-      cuadros = 0;
-      marca = ahora;
-      const c = mapa.center;
-      log(
-        `fps ${estado.fps}  ·  primera vista estable ${estado.carga || '…'}\n` +
-          `último vuelo ${estado.ultimoVuelo}\n` +
-          `cámara ${c ? `${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}` : '-'}  rango ${Math.round(mapa.range ?? 0)} m  tilt ${Math.round(mapa.tilt ?? 0)}`,
-      );
-    }
-    requestAnimationFrame(medir);
+  $('[data-video-cerrar]').addEventListener('click', () => dialogo.close());
+
+  // Respaldo: sin clave, sin WebGL o con la clave rechazada se ofrece la lista del sitio
+  const respaldo = () => {
+    ponerVista('llegada');
+    $('[data-explorar]').hidden = true;
+    $('[data-respaldo-aviso]').hidden = false;
+    const fondo = document.querySelector<HTMLElement>('[data-fondo]');
+    if (fondo) fondo.hidden = false;
+    $('[data-lienzo]').replaceChildren();
   };
-  requestAnimationFrame(medir);
+  if (!cfg.key || !soportaWebGL()) {
+    respaldo();
+    return;
+  }
+  window.gm_authFailure = respaldo;
 
-  if (cfg.dibujo) {
-    const { PinElement } = await window.google.maps.importLibrary('marker');
-    const { Marker3DElement } = maps3d;
-    let modoPrevio = mapa.mode;
-    iniciarDibujo({
-      mapa,
-      slug: lote.slug,
-      urlGuardar: cfg.guardar,
-      pintar: pintarLindero,
-      actual: () => contorno,
-      crearVertice: (p) => {
-        const v = new Marker3DElement({ position: { ...p, altitude: 0 }, altitudeMode: 'CLAMP_TO_GROUND' });
-        v.append(new PinElement({ scale: 0.55, background: '#6cc17a', borderColor: '#08130b', glyphColor: '#08130b' }));
-        return v;
-      },
-      alEntrar: () => {
-        marcador.remove();
-        modoPrevio = mapa.mode;
-        mapa.mode = 'SATELLITE';
-        // Vista cenital sobre el lote: cada clic cae donde se ve
-        volar({ center: centroLote, range: 420, tilt: 0, heading: 0 }, 2500);
-      },
-      alSalir: () => {
-        mapa.append(marcador);
-        mapa.mode = modoPrevio;
-      },
+  try {
+    await cargarMaps(cfg.key);
+  } catch {
+    respaldo();
+    return;
+  }
+  const maps3d = await window.google.maps.importLibrary('maps3d');
+  const { PinElement } = await window.google.maps.importLibrary('marker');
+  const { Map3DElement, Polygon3DElement, Polyline3DElement, Marker3DElement } = maps3d;
+  const MarcadorClic = maps3d.Marker3DInteractiveElement ?? Marker3DElement;
+
+  const mapa = new Map3DElement({ ...PLANETA, mode: 'HYBRID' });
+  $('[data-lienzo]').append(mapa);
+  // En celular la lista y la ficha ocupan la parte baja: se ocultan brújula y pantalla completa (la atribución queda)
+  const angosto = matchMedia('(max-width: 767px)');
+  const ajustarUI = () => (mapa.defaultUIHidden = angosto.matches);
+  ajustarUI();
+  angosto.addEventListener('change', ajustarUI);
+
+  // La API renombró outerCoordinates/coordinates a path; se usa lo que exista
+  const ruta = (el: any, puntos: object[], viejo: 'outerCoordinates' | 'coordinates') => {
+    if ('path' in el) el.path = puntos;
+    else el[viejo] = puntos;
+  };
+
+  // Capas de contexto: país, departamento y municipios con lotes
+  const capa = async (nombre: string, color: string, ancho: number) => {
+    const geo = await fetch(`${cfg.capas}${nombre}.geojson`).then((r) => r.json());
+    for (const f of geo.features)
+      for (const poly of f.geometry.coordinates) {
+        const el = new Polyline3DElement({ altitudeMode: 'CLAMP_TO_GROUND', strokeColor: color, strokeWidth: ancho, drawsOccludedSegments: true });
+        ruta(el, poly[0].map(([lng, lat]: number[]) => ({ lat, lng })), 'coordinates');
+        mapa.append(el);
+      }
+  };
+  capa('colombia', 'rgba(255,255,255,0.9)', 3);
+  capa('antioquia', 'rgba(255,255,255,0.75)', 2);
+  capa('municipios', 'rgba(108,193,122,0.75)', 1.5);
+
+  // Linderos de los lotes
+  const poligonos = new Map<string, any>();
+  const pintarLindero = (id: string, puntos: LatLng[], resaltado = id === abierto) => {
+    let el = poligonos.get(id);
+    if (puntos.length < 3) {
+      el?.remove();
+      return;
+    }
+    if (!el) {
+      el = new Polygon3DElement({ altitudeMode: 'CLAMP_TO_GROUND', drawsOccludedSegments: true });
+      poligonos.set(id, el);
+    }
+    el.strokeColor = resaltado ? 'rgba(108,193,122,1)' : 'rgba(108,193,122,0.8)';
+    el.strokeWidth = resaltado ? 4 : 2;
+    el.fillColor = resaltado ? 'rgba(108,193,122,0.32)' : 'rgba(108,193,122,0.16)';
+    ruta(el, puntos, 'outerCoordinates');
+    if (!el.isConnected) mapa.append(el);
+  };
+  linderos.forEach((pts, id) => pintarLindero(id, pts));
+
+  // Marcadores: uno por zona (vista Antioquia) y uno por lote con su precio corto (vista zona)
+  const pin = (fondo: string, glifo?: string, escala = 1) =>
+    new PinElement({ background: fondo, borderColor: TINTA, glyphColor: TINTA, scale: escala, ...(glifo ? { glyphText: glifo } : {}) });
+  const colorLote = (l: LoteGlobo, activo: boolean) => (activo ? '#f4f5f3' : l.estado === 'disponible' ? VERDE : AMBAR);
+
+  const marcadoresLote = new Map<string, any>();
+  for (const l of cfg.lotes) {
+    const m = new MarcadorClic({
+      position: { lat: l.lat, lng: l.lng, altitude: 40 },
+      altitudeMode: 'RELATIVE_TO_GROUND',
+      extruded: true,
+      label: l.precioCorto,
+      title: `${l.nombre}, ${l.municipio}`,
     });
+    m.append(pin(colorLote(l, false)));
+    m.addEventListener('gmp-click', () => irLote(l.id));
+    marcadoresLote.set(l.id, m);
+  }
+  const marcarActivo = () =>
+    marcadoresLote.forEach((m, id) => {
+      m.replaceChildren(pin(colorLote(porId.get(id)!, id === abierto), undefined, id === abierto ? 1.25 : 1));
+    });
+
+  const marcadoresZona = new Map<string, any>();
+  for (const z of zonas) {
+    const c = camaraGrupo(cfg.lotes.filter((l) => l.zona.id === z.id)).center;
+    const m = new MarcadorClic({
+      position: { lat: c.lat, lng: c.lng, altitude: 0 },
+      altitudeMode: 'CLAMP_TO_GROUND',
+      label: z.nombre,
+      title: `Ver lotes en ${z.nombre}`,
+    });
+    m.addEventListener('gmp-click', () => irZona(z.id));
+    marcadoresZona.set(z.id, m);
   }
 
-  // Enlace profundo: /globo/#mirador-del-valle llega directo al lote
-  if (location.hash === `#${lote.slug}`) {
-    Object.assign(mapa, { ...camaraLote, range: camaraLote.range * 3 });
-    volar(camaraLote, 1500);
-  }
+  // Qué se ve según la distancia: zonas de lejos, lotes de cerca; etiquetas de Google solo desde muy alto
+  let dibujando = false;
+  const mostrar = (m: any, si: boolean) => {
+    if (si && !m.isConnected) mapa.append(m);
+    else if (!si && m.isConnected) m.remove();
+  };
+  const actualizarCapas = () => {
+    const rango = mapa.range ?? PLANETA.range;
+    const cerca = rango <= UMBRAL_LOTES;
+    for (const z of zonas) {
+      const n = cfg.lotes.filter((l) => l.zona.id === z.id && pasa.has(l.id)).length;
+      const m = marcadoresZona.get(z.id);
+      if (m.dataset.n !== String(n)) {
+        m.dataset.n = String(n);
+        m.replaceChildren(pin(VERDE, String(n), 1.3));
+      }
+      mostrar(m, vista !== 'llegada' && !cerca && n > 0 && rango < UMBRAL_ETIQUETAS * 2);
+    }
+    marcadoresLote.forEach((m, id) => mostrar(m, !dibujando && cerca && (pasa.has(id) || id === abierto)));
+    const modo = rango > UMBRAL_ETIQUETAS ? 'HYBRID' : 'SATELLITE';
+    if (mapa.mode !== modo) mapa.mode = modo;
+  };
+  let pendiente = false;
+  const programarCapas = () => {
+    if (pendiente) return;
+    pendiente = true;
+    requestAnimationFrame(() => {
+      pendiente = false;
+      actualizarCapas();
+    });
+  };
+  mapa.addEventListener('gmp-rangechange', programarCapas);
+  alFiltrar = programarCapas;
+
+  // Cámara
+  let animacion: 'ninguna' | 'vuelo' | 'llegada-lote' | 'orbita' = 'ninguna';
+  const marcarOrbita = (si: boolean) => $$('[data-orbitar]').forEach((b) => b.setAttribute('aria-pressed', String(si)));
+  const detener = () => {
+    mapa.stopCameraAnimation?.();
+    if (animacion === 'orbita') marcarOrbita(false);
+    animacion = 'ninguna';
+  };
+  const volar = (cam: Camara, ms: number, tipo: typeof animacion = 'vuelo') => {
+    detener();
+    if (reducido) {
+      Object.assign(mapa, cam);
+      programarCapas();
+      return;
+    }
+    animacion = tipo;
+    mapa.flyCameraTo({ endCamera: cam, durationMillis: ms });
+  };
+  // En celular la ficha tapa la mitad baja: el centro de la cámara se corre hacia quien mira y el lote sube en pantalla
+  const camaraLlegada = (l: LoteGlobo): Camara => {
+    const cam = camaraLote(l);
+    if (!angosto.matches) return cam;
+    const k = cam.range * 0.3;
+    const h = (cam.heading * Math.PI) / 180;
+    const lat = cam.center.lat - (k * Math.cos(h)) / 110_574;
+    const lng = cam.center.lng - (k * Math.sin(h)) / (111_320 * Math.cos((cam.center.lat * Math.PI) / 180));
+    return { ...cam, center: { ...cam.center, lat, lng } };
+  };
+  const orbitar = () => {
+    if (!abierto || reducido) return;
+    detener();
+    animacion = 'orbita';
+    marcarOrbita(true);
+    mapa.flyCameraAround({ camera: camaraLote(porId.get(abierto)!), durationMillis: 60_000, repeatCount: 1 });
+  };
+  mapa.addEventListener('gmp-animationend', () => {
+    const fue = animacion;
+    animacion = 'ninguna';
+    if (fue === 'orbita') marcarOrbita(false);
+    // Al llegar al lote, la cámara empieza a girar despacio alrededor del lindero
+    if (fue === 'llegada-lote' && vista === 'lote' && !dibujando && !angosto.matches) orbitar();
+  });
+  $$('[data-orbitar]').forEach((b) => b.addEventListener('click', () => (animacion === 'orbita' ? detener() : orbitar())));
+
+  // Llegada: el planeta gira hasta que la persona explora o toca el globo
+  let girando = !reducido;
+  let ultimo = performance.now();
+  const girar = (ahora: number) => {
+    if (girando && vista === 'llegada') {
+      const c = mapa.center ?? PLANETA.center;
+      mapa.center = { lat: c.lat, lng: ((c.lng + (ahora - ultimo) * 0.0025 + 540) % 360) - 180, altitude: 0 };
+    }
+    ultimo = ahora;
+    if (girando) requestAnimationFrame(girar);
+  };
+  requestAnimationFrame(girar);
+  $('[data-lienzo]').addEventListener('pointerdown', () => {
+    girando = false;
+    if (animacion === 'orbita') detener();
+  });
+
+  const hash = (h: string) => history.replaceState(null, '', h ? `#${h}` : location.pathname + location.search);
+
+  const irAntioquia = (ms = 4500) => {
+    girando = false;
+    cerrarFicha();
+    zonaActual = undefined;
+    ponerVista('mapa');
+    ponerMiga();
+    volar(ANTIOQUIA, ms);
+    hash('');
+    programarCapas();
+  };
+  const irZona = (id: string, ms = 3000) => {
+    const lotesZona = cfg.lotes.filter((l) => l.zona.id === id && pasa.has(l.id));
+    if (!lotesZona.length) return;
+    girando = false;
+    cerrarFicha();
+    zonaActual = id;
+    ponerVista('zona');
+    ponerMiga(id);
+    volar(camaraGrupo(lotesZona), ms);
+    hash(`zona-${id}`);
+  };
+  const irLote = (id: string, ms = 4000) => {
+    const l = porId.get(id);
+    if (!l) return;
+    girando = false;
+    zonaActual = l.zona.id;
+    ponerVista('lote');
+    ponerMiga(l.zona.id);
+    abrirFicha(id);
+    volar(camaraLlegada(l), ms, 'llegada-lote');
+    hash(id);
+  };
+  const volverAlMapa = () => {
+    const zona = zonaActual;
+    cerrarFicha();
+    if (zona) irZona(zona, 2500);
+    else irAntioquia(2500);
+  };
+
+  // Herramienta de lindero (solo en desarrollo)
+  const dibujo = cfg.dibujo
+    ? iniciarDibujo({
+        mapa,
+        urlGuardar: cfg.guardar,
+        slug: () => abierto,
+        actual: () => (abierto ? linderos.get(abierto) ?? [] : []),
+        pintar: (pts) => {
+          if (abierto) pintarLindero(abierto, pts, true);
+        },
+        alGuardar: (pts) => {
+          if (abierto) linderos.set(abierto, pts);
+        },
+        alEntrar: () => {
+          dibujando = true;
+          const l = porId.get(abierto!)!;
+          volar({ center: { lat: l.lat, lng: l.lng, altitude: l.alt }, range: 420, tilt: 0, heading: 0 }, 2000);
+          programarCapas();
+        },
+        alSalir: () => {
+          dibujando = false;
+          programarCapas();
+        },
+        crearVertice: (p) => {
+          const v = new Marker3DElement({ position: { ...p, altitude: 0 }, altitudeMode: 'CLAMP_TO_GROUND' });
+          v.append(pin(VERDE, undefined, 0.55));
+          return v;
+        },
+      })
+    : { refrescar: () => {}, cancelar: () => {} };
+
+  alAbrir = (id) => {
+    marcarActivo();
+    linderos.forEach((pts, x) => pintarLindero(x, pts, x === id));
+    dibujo.refrescar();
+    programarCapas();
+  };
+  alCerrar = () => {
+    dibujo.cancelar();
+    detener();
+    marcarActivo();
+    linderos.forEach((pts, x) => pintarLindero(x, pts, false));
+    programarCapas();
+  };
+
+  $('[data-explorar]').addEventListener('click', () => irAntioquia());
+  $('[data-ir-antioquia]').addEventListener('click', () => irAntioquia(2500));
+  $$('[data-ir-zona]').forEach((b) => b.addEventListener('click', () => irZona(b.dataset.irZona!)));
+  $$('[data-abrir]').forEach((b) => b.addEventListener('click', () => irLote(b.dataset.abrir!)));
+  $$('[data-volver]').forEach((b) => b.addEventListener('click', volverAlMapa));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && abierto && !dialogo.open) volverAlMapa();
+  });
+
+  // Enlaces profundos: #<lote> abre el lote y #zona-<id> la zona, sin pasar por la llegada
+  const abrirDesdeHash = () => {
+    const h = decodeURIComponent(location.hash.slice(1));
+    if (porId.has(h)) {
+      if (h === abierto) return;
+      const cam = camaraLlegada(porId.get(h)!);
+      Object.assign(mapa, { ...cam, range: cam.range * 6, tilt: Math.max(0, cam.tilt - 20) });
+      irLote(h, 2500);
+    } else if (h.startsWith('zona-') && zonas.some((z) => z.id === h.slice(5))) {
+      if (vista === 'zona' && zonaActual === h.slice(5)) return;
+      Object.assign(mapa, ANTIOQUIA);
+      irZona(h.slice(5), 2500);
+    }
+  };
+  abrirDesdeHash();
+  window.addEventListener('hashchange', abrirDesdeHash);
+  programarCapas();
 }

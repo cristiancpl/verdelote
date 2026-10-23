@@ -14,5 +14,10 @@
     "Árboles frutales",
     "Agua de riego",
     "Cerca a la autopista"
-  ]
+  ],
+  "mapa": {
+    "lat": 6.4271,
+    "lon": -75.3192,
+    "alt": 1400
+  }
 }

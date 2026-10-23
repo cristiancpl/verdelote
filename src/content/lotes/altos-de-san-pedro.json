@@ -14,5 +14,10 @@
     "Terreno plano",
     "Vista a potreros",
     "Acueducto veredal"
-  ]
+  ],
+  "mapa": {
+    "lat": 6.4712,
+    "lon": -75.5431,
+    "alt": 2480
+  }
 }

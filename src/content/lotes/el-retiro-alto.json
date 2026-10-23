@@ -14,5 +14,10 @@
     "Bosque nativo",
     "Nacimiento de agua",
     "Vía pavimentada"
-  ]
+  ],
+  "mapa": {
+    "lat": 6.0738,
+    "lon": -75.5144,
+    "alt": 2250
+  }
 }

@@ -55,6 +55,18 @@ const lotes = defineCollection({
           aproximadas: z.boolean().default(true),
         })
         .optional(),
+      // Globo 3D (/globo/): punto del marcador si difiere de coordenadas (lotes demo), altura del terreno en metros
+      // y cámara de llegada. El lindero vive en public/capas/lindero-<id>.geojson (se dibuja en /globo/ en desarrollo)
+      mapa: z
+        .object({
+          lat: z.number().min(-90).max(90).optional(),
+          lon: z.number().min(-180).max(180).optional(),
+          alt: z.number().optional(),
+          camara: z
+            .object({ range: z.number().positive(), tilt: z.number().min(0).max(90), heading: z.number() })
+            .optional(),
+        })
+        .optional(),
       contacto: z
         .object({
           nombre: z.string(),

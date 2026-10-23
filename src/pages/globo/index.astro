@@ -1,116 +1,1043 @@
 ---
-// Fase 1 del plan del globo: prueba técnica con gmp-map-3d (Photorealistic 3D Tiles).
-// Globo, contorno de Colombia y Antioquia, marcador del Mirador del Valle y vuelo de cámara con un clic.
-// La clave sale de PUBLIC_GOOGLE_MAPS_KEY (.env, fuera de git). Sin clave se muestra un aviso
-import { getEntry } from 'astro:content';
-import { formatPrecioCorto, url } from '../../lib/format';
+// Verdelote globo: el comprador navega un globo 3D fotorrealista (gmp-map-3d) hasta cada lote.
+// Llegada con el planeta girando, zonas de Antioquia, lotes con precio corto, ficha lateral y recorrido en video.
+// La clave sale de PUBLIC_GOOGLE_MAPS_KEY (.env, fuera de git). Sin clave o sin WebGL queda la lista de lotes
+import { existsSync, readFileSync } from 'node:fs';
+import { Image, getImage } from 'astro:assets';
+import { getCollection } from 'astro:content';
+import Icon from '../../components/Icon.astro';
+import Base from '../../layouts/Base.astro';
+import { formatArea, formatPrecio, formatPrecioCorto, formatPrecioM2, nombreCorto, url } from '../../lib/format';
+import { tieneRecorrido } from '../../lib/lote';
+import { zonaDe } from '../../lib/zonas';
 
-const lote = await getEntry('lotes', 'mirador-del-valle');
-if (!lote) throw new Error('Falta el lote mirador-del-valle');
-const { data } = lote;
-if (!data.coordenadas) throw new Error('El lote no tiene coordenadas');
-const { lat, lon } = data.coordenadas;
+const entradas = (await getCollection('lotes')).sort((a, b) => a.data.orden - b.data.orden);
 
-// Contorno aproximado del KML (verdelote_limites_pais.kml), [lon, lat]
-const contorno = [
-  [-75.438608, 6.407914], [-75.438337, 6.40812], [-75.43809, 6.408238], [-75.437843, 6.408257],
-  [-75.437607, 6.408193], [-75.437587, 6.408032], [-75.437843, 6.408002], [-75.43809, 6.407953],
-  [-75.438337, 6.4079], [-75.438445, 6.407836], [-75.438504, 6.407689], [-75.438682, 6.407728],
-];
+/** Lindero dibujado en el globo (public/capas/lindero-<id>.geojson) como [{lat, lng}] */
+const lindero = (id: string) => {
+  const ruta = new URL(`../../../public/capas/lindero-${id}.geojson`, import.meta.url);
+  if (!existsSync(ruta)) return [];
+  const geo = JSON.parse(readFileSync(ruta, 'utf-8'));
+  return (geo.features[0].geometry.coordinates[0] as number[][]).slice(0, -1).map(([lng, lat]) => ({ lat, lng }));
+};
+
+/** Centro del lindero; el marcador y la órbita giran alrededor de él */
+const centro = (pts: { lat: number; lng: number }[]) =>
+  pts.length >= 3
+    ? { lat: pts.reduce((s, p) => s + p.lat, 0) / pts.length, lng: pts.reduce((s, p) => s + p.lng, 0) / pts.length }
+    : undefined;
+
+const lotes = await Promise.all(
+  entradas
+    .filter((l) => l.data.mapa?.lat !== undefined || l.data.coordenadas)
+    .map(async (l) => {
+      const d = l.data;
+      const contorno = lindero(l.id);
+      const medio = centro(contorno);
+      const video = d.video_completo ?? (d.vuelo ? { src: d.vuelo.src, poster: d.vuelo.poster } : undefined);
+      return {
+        id: l.id,
+        d,
+        zona: zonaDe(d.municipio),
+        corto: nombreCorto(d.nombre),
+        whatsapp: d.contacto
+          ? `https://wa.me/${d.contacto.whatsapp}?text=${encodeURIComponent(
+              `Hola ${d.contacto.nombre}, vi el ${d.nombre} en Verdelote y quiero agendar una visita`,
+            )}`
+          : undefined,
+        ruta:
+          d.coordenadas && !d.demo
+            ? `https://www.google.com/maps/dir/?api=1&destination=${d.coordenadas.lat},${d.coordenadas.lon}`
+            : undefined,
+        video: video ? { src: url(video.src), poster: (await getImage({ src: video.poster, width: 1280 })).src } : undefined,
+        cliente: {
+          id: l.id,
+          nombre: nombreCorto(d.nombre),
+          municipio: d.municipio,
+          zona: zonaDe(d.municipio),
+          lat: medio?.lat ?? d.mapa?.lat ?? d.coordenadas!.lat,
+          lng: medio?.lng ?? d.mapa?.lon ?? d.coordenadas!.lon,
+          alt: d.mapa?.alt ?? 0,
+          camara: d.mapa?.camara,
+          area: d.area_m2,
+          precio: d.precio_cop,
+          precioCorto: formatPrecioCorto(d.precio_cop),
+          estado: d.estado,
+          demo: d.demo,
+          recorrido: tieneRecorrido(d),
+          lindero: contorno,
+        },
+      };
+    }),
+);
+
+// Respaldo sin 3D: último cuadro del vuelo publicado como fondo de la llegada
+const conVuelo = entradas.find((l) => l.data.vuelo);
+const fondo = conVuelo ? await getImage({ src: conVuelo.data.vuelo!.final, width: 1920, format: 'webp' }) : undefined;
+
+const municipios = [...new Set(lotes.map((l) => l.d.municipio))].sort((a, b) => a.localeCompare(b, 'es'));
+const zonas = [...new Map(lotes.map((l) => [l.zona.id, l.zona])).values()];
 
 const config = {
   key: import.meta.env.PUBLIC_GOOGLE_MAPS_KEY ?? '',
   capas: url('capas/'),
   dibujo: import.meta.env.DEV,
   guardar: url('__lindero'),
-  lote: {
-    slug: lote.id,
-    nombre: data.nombre,
-    precio: formatPrecioCorto(data.precio_cop),
-    lat,
-    lng: lon,
-    // Altura del terreno y cámara de llegada del vuelo v7 (prep/vuelo/ges/generar_esp_directo.py)
-    alt: 1538,
-    camara: { range: 470, tilt: 64, heading: 340 },
-    contorno,
-  },
+  lotes: lotes.map((l) => l.cliente),
 };
+const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
 ---
 
-<html lang="es-CO">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="robots" content="noindex" />
-    <meta name="color-scheme" content="dark" />
-    <title>Globo · prueba técnica · Verdelote</title>
-    <link rel="icon" type="image/svg+xml" href={url('favicon.svg')} />
-    <style>
-      html, body { margin: 0; height: 100%; background: #0b0c0d; color: #f4f5f3; font: 15px/1.4 system-ui, sans-serif; }
-      #globo { position: fixed; inset: 0; }
-      gmp-map-3d { width: 100%; height: 100%; }
-      .panel {
-        position: fixed; top: 16px; left: 16px; z-index: 2; display: grid; gap: 8px; max-width: 320px;
-        padding: 14px; border-radius: 18px; background: rgb(11 12 13 / 0.72); backdrop-filter: blur(14px);
-        border: 1px solid rgb(255 255 255 / 0.1);
-      }
-      .panel h1 { margin: 0; font-size: 16px; font-weight: 600; }
-      .panel p { margin: 0; color: #a4aaa6; font-size: 13px; }
-      .fila { display: flex; flex-wrap: wrap; gap: 6px; }
-      button {
-        font: inherit; font-size: 13px; padding: 7px 12px; border-radius: 999px; cursor: pointer;
-        border: 1px solid rgb(255 255 255 / 0.16); background: rgb(255 255 255 / 0.06); color: inherit;
-      }
-      button.primario { background: #6cc17a; color: #08130b; border-color: transparent; font-weight: 600; }
-      #medidas { font: 12px/1.5 ui-monospace, monospace; color: #a4aaa6; white-space: pre; }
-      .dibujo { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid rgb(255 255 255 / 0.1); }
-      .dibujo strong { font-size: 14px; font-weight: 600; }
-      .dibujo [data-dibujo-info] { font-size: 13px; color: #f4f5f3; }
-      .dibujo .pasos { display: none; }
-      .dibujo[data-estado='dibujando'] .pasos { display: flex; }
-      .dibujo[data-estado='dibujando'] [data-dibujo='iniciar'] { display: none; }
-      .dibujo .ayuda { display: none; }
-      .dibujo[data-estado='dibujando'] .ayuda { display: block; }
-      .aviso { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px; }
-    </style>
-  </head>
-  <body>
-    <div id="globo"></div>
-    <aside class="panel">
-      <h1>Prueba técnica del globo</h1>
-      <p>Clic en el marcador del lote o en los botones</p>
-      <div class="fila">
-        <button data-ir="planeta">Planeta</button>
-        <button data-ir="colombia">Colombia</button>
-        <button data-ir="antioquia">Antioquia</button>
-        <button data-ir="lote" class="primario">Ir al lote</button>
-        <button data-ir="orbita">Orbitar</button>
+<Base
+  title="Explora los lotes en el globo"
+  description="Navega Antioquia en 3D, vuela hasta cada lote y mira el terreno desde el aire antes de visitarlo"
+  nav="overlay"
+>
+  <div class="globo" data-globo data-vista="llegada">
+    <div class="lienzo" data-lienzo role="region" aria-label="Globo 3D con los lotes de Verdelote"></div>
+    {fondo && <img class="fondo" src={fondo.src} alt="" data-fondo hidden />}
+
+    <section class="llegada" data-llegada aria-labelledby="llegada-titulo">
+      <h1 id="llegada-titulo">Vuela hasta tu próximo lote</h1>
+      <p>Lotes en Antioquia en 3D real. Elige una zona, toca un lote y míralo desde el aire</p>
+      <div class="acciones">
+        <button class="btn btn-primary" type="button" data-explorar>
+          Explorar lotes <Icon name="arrow-right" />
+        </button>
+        <a class="btn btn-glass" href={url('#lotes')}>Ver en lista</a>
       </div>
-      <div id="medidas">Cargando…</div>
+      <p class="respaldo-aviso" data-respaldo-aviso hidden>
+        Este navegador no puede mostrar el globo 3D. Igual puedes recorrer la lista de lotes
+      </p>
+    </section>
+
+    <aside class="rail" data-rail aria-label="Lotes">
+      <div class="rail-top">
+        <nav class="migas" aria-label="Ubicación en el globo">
+          <button type="button" class="miga" data-ir-antioquia><Icon name="globe-hemisphere-west" />Antioquia</button>
+          <span class="miga-zona" data-miga-zona hidden></span>
+        </nav>
+        <button class="icon-btn rail-toggle" type="button" data-rail-toggle aria-expanded="true" aria-label="Mostrar u ocultar la lista">
+          <Icon name="list" />
+        </button>
+      </div>
+
+      <div class="buscar">
+        <label class="sr" for="buscar-lote">Buscar lote por nombre o municipio</label>
+        <Icon name="magnifying-glass" />
+        <input id="buscar-lote" type="search" placeholder="Buscar lote" autocomplete="off" data-buscar />
+        <button class="filtros-btn" type="button" data-filtros-toggle aria-expanded="false" aria-controls="filtros">
+          <Icon name="sliders-horizontal" /><span>Filtros</span><span class="n" data-filtros-n hidden></span>
+        </button>
+      </div>
+
+      <div class="filtros" id="filtros" data-filtros hidden>
+        <label>
+          <span>Municipio</span>
+          <select data-f-municipio>
+            <option value="">Todos</option>
+            {municipios.map((m) => <option value={m}>{m}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>Área mínima</span>
+          <select data-f-area>
+            <option value="">Cualquiera</option>
+            <option value="2000">2.000 m²</option>
+            <option value="3000">3.000 m²</option>
+            <option value="5000">5.000 m²</option>
+          </select>
+        </label>
+        <label>
+          <span>Precio máximo</span>
+          <select data-f-precio>
+            <option value="">Cualquiera</option>
+            <option value="250000000">$250 M</option>
+            <option value="300000000">$300 M</option>
+            <option value="400000000">$400 M</option>
+          </select>
+        </label>
+        <label class="check">
+          <input type="checkbox" data-f-recorrido />
+          <span>Solo con recorrido en video</span>
+        </label>
+      </div>
+
+      <p class="conteo" data-conteo aria-live="polite">{lotes.length} lotes</p>
+
+      <div class="lista" data-lista>
+        {
+          zonas.map((z) => (
+            <section class="grupo" data-grupo={z.id}>
+              <button type="button" class="grupo-titulo" data-ir-zona={z.id}>
+                {z.nombre}
+                <span data-grupo-n />
+              </button>
+              <ul>
+                {lotes
+                  .filter((l) => l.zona.id === z.id)
+                  .map((l) => (
+                    <li data-item={l.id}>
+                      <button type="button" class="item" data-abrir={l.id}>
+                        {l.d.portada ? (
+                          <Image src={l.d.portada} alt="" widths={[112, 224]} sizes="56px" class="thumb" />
+                        ) : (
+                          <span class="thumb vacio">
+                            <Icon name="mountains" />
+                          </span>
+                        )}
+                        <span class="item-txt">
+                          <strong>{l.corto}</strong>
+                          <span>{l.d.demo ? `${l.d.municipio}, demo` : l.d.municipio}</span>
+                        </span>
+                        <span class="item-num">
+                          <strong>{formatPrecioCorto(l.d.precio_cop)}</strong>
+                          <span>{formatArea(l.d.area_m2)}</span>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            </section>
+          ))
+        }
+        <div class="vacio-lista" data-vacio hidden>
+          <p>Ningún lote cumple esos filtros</p>
+          <button class="btn btn-ghost btn-sm" type="button" data-limpiar>Limpiar filtros</button>
+        </div>
+      </div>
+    </aside>
+
+    <aside class="ficha" data-ficha aria-label="Ficha del lote" hidden>
+      {
+        lotes.map((l) => (
+          <article data-ficha-lote={l.id} hidden aria-labelledby={`ficha-${l.id}`}>
+            <button class="icon-btn cerrar" type="button" data-volver aria-label="Volver al mapa">
+              <Icon name="x" />
+            </button>
+            <div class="foto">
+              {l.d.portada ? (
+                <Image src={l.d.portada} alt={l.d.galeria[0]?.alt ?? l.d.nombre} widths={[400, 760]} sizes="(max-width: 767px) 100vw, 384px" />
+              ) : (
+                <div class="foto-vacia">
+                  <Icon name="image" />
+                  <span>Lote de demostración, sin fotos</span>
+                </div>
+              )}
+            </div>
+            <div class="cuerpo">
+              <p class="lugar">
+                <Icon name="map-pin" />
+                {[l.d.vereda, l.d.municipio].filter(Boolean).join(', ')}
+              </p>
+              <h2 id={`ficha-${l.id}`}>{l.corto}</h2>
+              <p class="tagline">{l.d.tagline}</p>
+
+              <div class="precio">
+                <strong>{formatPrecio(l.d.precio_cop)}</strong>
+                <span>{formatPrecioM2(l.d.precio_cop, l.d.area_m2)}</span>
+              </div>
+
+              <dl class="cifras">
+                <div>
+                  <dt>Área</dt>
+                  <dd>{formatArea(l.d.area_m2)}</dd>
+                </div>
+                {l.d.explanacion_m2 && (
+                  <div>
+                    <dt>Explanación</dt>
+                    <dd>{formatArea(l.d.explanacion_m2)}</dd>
+                  </div>
+                )}
+                <div>
+                  <dt>Estado</dt>
+                  <dd class:list={['estado', l.d.estado]}>{l.d.estado[0].toUpperCase() + l.d.estado.slice(1)}</dd>
+                </div>
+              </dl>
+
+              {l.d.atributos.length > 0 && (
+                <ul class="atributos">
+                  {l.d.atributos.slice(0, 4).map((a) => (
+                    <li>{a}</li>
+                  ))}
+                </ul>
+              )}
+
+              {l.d.demo && <p class="nota">Lote de demostración con datos de ejemplo</p>}
+              {l.d.coordenadas?.aproximadas && !l.d.demo && <p class="nota">Lindero y ubicación aproximados</p>}
+
+              <div class="ficha-acciones">
+                {l.whatsapp && (
+                  <a class="btn btn-primary" href={l.whatsapp} target="_blank" rel="noopener">
+                    <Icon name="whatsapp" />
+                    Agendar visita
+                  </a>
+                )}
+                <div class="fila">
+                  {l.video && (
+                    <button class="btn btn-ghost btn-sm" type="button" data-recorrido={l.video.src} data-poster={l.video.poster}>
+                      <Icon name="play-fill" />
+                      Recorrido
+                    </button>
+                  )}
+                  <a class="btn btn-ghost btn-sm" href={url(`lotes/${l.id}/`)}>
+                    Ficha completa
+                  </a>
+                  {l.ruta && (
+                    <a class="btn btn-ghost btn-sm" href={l.ruta} target="_blank" rel="noopener">
+                      <Icon name="navigation-arrow" />
+                      Cómo llegar
+                    </a>
+                  )}
+                </div>
+                <div class="fila">
+                  <button class="btn btn-ghost btn-sm" type="button" data-orbitar aria-pressed="false">
+                    <Icon name="arrows-clockwise" />
+                    Girar alrededor
+                  </button>
+                  <button class="btn btn-ghost btn-sm" type="button" data-volver>
+                    <Icon name="arrow-left" />
+                    Volver al mapa
+                  </button>
+                </div>
+              </div>
+            </div>
+          </article>
+        ))
+      }
       {
         config.dibujo && (
           <div class="dibujo" data-dibujo data-estado="listo">
-            <strong>Lindero del lote</strong>
-            <span data-dibujo-info>…</span>
-            <p class="ayuda">Haz clic en cada esquina del lote, en orden. Puedes girar y acercar mientras dibujas</p>
-            <button data-dibujo="iniciar" class="primario">Dibujar lote</button>
-            <div class="fila pasos">
-              <button data-dibujo="guardar" class="primario">Guardar</button>
-              <button data-dibujo="deshacer">Deshacer</button>
-              <button data-dibujo="borrar">Borrar</button>
-              <button data-dibujo="cancelar">Cancelar</button>
+            <strong>Lindero (solo en tu computador)</strong>
+            <span data-dibujo-info />
+            <p class="ayuda">Clic en cada esquina del lote, en orden. Puedes girar y acercar mientras dibujas</p>
+            <div class="fila">
+              <button class="btn btn-ghost btn-sm" type="button" data-dibujo-accion="iniciar">
+                Dibujar lindero
+              </button>
+              <button class="btn btn-primary btn-sm solo-dibujo" type="button" data-dibujo-accion="guardar">
+                Guardar
+              </button>
+              <button class="btn btn-ghost btn-sm solo-dibujo" type="button" data-dibujo-accion="deshacer">
+                Deshacer
+              </button>
+              <button class="btn btn-ghost btn-sm solo-dibujo" type="button" data-dibujo-accion="borrar">
+                Borrar
+              </button>
+              <button class="btn btn-ghost btn-sm solo-dibujo" type="button" data-dibujo-accion="cancelar">
+                Cancelar
+              </button>
             </div>
           </div>
         )
       }
     </aside>
 
-    <script is:inline define:vars={{ config }}>
-      window.VERDELOTE_GLOBO = config;
-    </script>
-    <script>
-      import { iniciarGlobo } from '../../lib/globo';
-      iniciarGlobo(document.getElementById('globo')!, document.getElementById('medidas')!);
-    </script>
-  </body>
-</html>
+    <dialog class="video" data-video aria-label="Recorrido del lote">
+      <button class="icon-btn" type="button" data-video-cerrar aria-label="Cerrar el recorrido"><Icon name="x" /></button>
+      <video controls playsinline preload="none" data-video-el></video>
+    </dialog>
+  </div>
+
+  <script type="application/json" id="globo-config" set:html={configJson} />
+</Base>
+
+<script>
+  import { iniciarGlobo } from '../../lib/globo';
+  iniciarGlobo();
+</script>
+
+<style>
+  /* Capas propias de la página: globo 0, degradado 1, lista y ficha 20, llegada 25 (nav global 30) */
+  :global(body:has([data-globo])) {
+    overflow: hidden;
+  }
+  :global(body:has([data-globo]) .site-footer) {
+    display: none;
+  }
+  .globo {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+  }
+  .lienzo {
+    position: absolute;
+    inset: 0;
+  }
+  .lienzo :global(gmp-map-3d) {
+    width: 100%;
+    height: 100%;
+  }
+  .sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* Llegada: texto abajo a la izquierda, el planeta gira detrás. Se deja libre la franja de atribución de Google */
+  .llegada {
+    position: absolute;
+    left: var(--gutter);
+    bottom: 96px;
+    z-index: 25;
+    max-width: 560px;
+    display: grid;
+    gap: 18px;
+    transition: opacity 0.6s var(--ease), transform 0.6s var(--ease), visibility 0.6s;
+  }
+  .llegada h1 {
+    font-size: clamp(2.4rem, 5vw, 4rem);
+    line-height: 1.04;
+    letter-spacing: -0.045em;
+    padding-bottom: 2px;
+  }
+  .llegada > p {
+    font-size: 1.125rem;
+    color: rgb(244 245 243 / 0.8);
+    max-width: 44ch;
+  }
+  .llegada .acciones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 6px;
+  }
+  .llegada [hidden],
+  .fondo[hidden] {
+    display: none;
+  }
+  .fondo {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .llegada .respaldo-aviso {
+    font-size: 0.9375rem;
+    color: var(--muted);
+  }
+  [data-vista]:not([data-vista='llegada']) .llegada {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(16px);
+    pointer-events: none;
+  }
+  .globo::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background: linear-gradient(90deg, rgb(11 12 13 / 0.72) 0%, rgb(11 12 13 / 0) 58%);
+    transition: opacity 0.8s var(--ease);
+  }
+  [data-vista]:not([data-vista='llegada'])::before {
+    opacity: 0;
+  }
+  /* Velo superior: la marca y el menú se leen sobre cualquier imagen */
+  .globo::after {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    height: 120px;
+    z-index: 1;
+    pointer-events: none;
+    background: linear-gradient(180deg, rgb(11 12 13 / 0.6) 0%, rgb(11 12 13 / 0) 100%);
+  }
+
+  /* Superficie flotante compartida por la lista y la ficha */
+  .rail,
+  .ficha {
+    position: absolute;
+    z-index: 20;
+    top: calc(var(--nav-h) + 8px);
+    background: rgb(17 19 20 / 0.84);
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 24px 60px rgb(0 0 0 / 0.35);
+    transition: opacity 0.5s var(--ease), transform 0.5s var(--ease), visibility 0.5s;
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .rail,
+    .ficha {
+      background: var(--bg-2);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+  }
+
+  /* Lista: a la izquierda, termina antes del logo de Google */
+  .rail {
+    left: 16px;
+    bottom: 64px;
+    width: 340px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+  }
+  [data-vista='llegada'] .rail {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateX(-16px);
+  }
+  .rail-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .migas {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+    font-size: 0.875rem;
+  }
+  .miga {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.08);
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+  }
+  .miga:hover {
+    background: rgb(255 255 255 / 0.14);
+  }
+  .miga-zona {
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .miga-zona::before {
+    content: '/';
+    margin-right: 6px;
+    color: rgb(255 255 255 / 0.3);
+  }
+  .rail-toggle {
+    display: none;
+    width: 40px;
+    height: 40px;
+  }
+
+  .buscar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 46px;
+    padding: 0 5px 0 14px;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.07);
+    border: 1px solid transparent;
+    color: var(--muted);
+  }
+  .buscar:focus-within {
+    border-color: rgb(108 193 122 / 0.6);
+  }
+  .buscar input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.9375rem;
+    outline: none;
+  }
+  .buscar input::placeholder {
+    color: #8d938f;
+  }
+  .filtros-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.08);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.8125rem;
+    cursor: pointer;
+  }
+  .filtros-btn[aria-expanded='true'] {
+    background: rgb(255 255 255 / 0.16);
+  }
+  .filtros-btn .n {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    line-height: 18px;
+    text-align: center;
+  }
+  .filtros {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .filtros[hidden] {
+    display: none;
+  }
+  .filtros label {
+    display: grid;
+    gap: 4px;
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+  .filtros label:first-child {
+    grid-column: 1 / -1;
+  }
+  .filtros select {
+    height: 40px;
+    padding: 0 10px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--bg-2);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.875rem;
+  }
+  .filtros .check {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 36px;
+    color: var(--text);
+    font-size: 0.875rem;
+  }
+  .filtros .check input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent);
+  }
+
+  .conteo {
+    font-size: 0.8125rem;
+    color: var(--muted);
+    padding: 0 4px;
+  }
+  .lista {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    margin: 0 -6px;
+    padding: 0 6px;
+    scrollbar-width: thin;
+  }
+  .grupo + .grupo {
+    margin-top: 14px;
+  }
+  .grupo[hidden],
+  .grupo li[hidden] {
+    display: none;
+  }
+  .grupo-titulo {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    padding: 6px 4px;
+    border: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+  }
+  .grupo-titulo span {
+    color: var(--muted);
+    font-weight: 400;
+    font-size: 0.8125rem;
+  }
+  .grupo-titulo:hover {
+    color: var(--accent);
+  }
+  .grupo ul {
+    list-style: none;
+    margin: 2px 0 0;
+    padding: 0;
+    display: grid;
+    gap: 2px;
+  }
+  .item {
+    display: grid;
+    grid-template-columns: 56px 1fr auto;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 8px;
+    border: 0;
+    border-radius: 14px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .item:hover,
+  .item[aria-current='true'] {
+    background: rgb(255 255 255 / 0.07);
+  }
+  .item[aria-current='true'] {
+    box-shadow: inset 0 0 0 1px rgb(108 193 122 / 0.5);
+  }
+  .thumb {
+    width: 56px;
+    height: 56px;
+    border-radius: 12px;
+    object-fit: cover;
+  }
+  .thumb.vacio {
+    display: grid;
+    place-items: center;
+    background: var(--card);
+    color: rgb(108 193 122 / 0.6);
+    font-size: 1.25rem;
+  }
+  .item-txt,
+  .item-num {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  .item-txt strong,
+  .item-num strong {
+    font-size: 0.9375rem;
+    font-weight: 600;
+  }
+  .item-txt strong {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .item-txt span,
+  .item-num span {
+    font-size: 0.8125rem;
+    color: var(--muted);
+  }
+  .item-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .vacio-lista {
+    display: grid;
+    justify-items: start;
+    gap: 12px;
+    padding: 18px 4px;
+    color: var(--muted);
+  }
+  .vacio-lista[hidden] {
+    display: none;
+  }
+
+  /* Ficha: a la derecha, deja libres la brújula y los controles de Google abajo a la derecha */
+  .ficha {
+    right: 16px;
+    width: 384px;
+    max-height: calc(100dvh - var(--nav-h) - 128px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+  .ficha[hidden] {
+    display: block;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateX(16px);
+    pointer-events: none;
+  }
+  .ficha article {
+    position: relative;
+  }
+  .ficha article[hidden] {
+    display: none;
+  }
+  .cerrar {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 1;
+    width: 40px;
+    height: 40px;
+    background: rgb(11 12 13 / 0.55);
+  }
+  .foto {
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: var(--radius) var(--radius) 0 0;
+    background: var(--card);
+  }
+  .foto img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .foto-vacia {
+    height: 100%;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+  .foto-vacia :global(.icon) {
+    width: 28px;
+    height: 28px;
+    color: rgb(108 193 122 / 0.6);
+  }
+  .cuerpo {
+    display: grid;
+    gap: 14px;
+    padding: 18px 20px 20px;
+  }
+  .lugar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8125rem;
+    color: var(--muted);
+  }
+  .cuerpo h2 {
+    font-size: 1.75rem;
+    line-height: 1.08;
+    margin-top: -6px;
+  }
+  .tagline {
+    color: rgb(244 245 243 / 0.8);
+    font-size: 0.9375rem;
+    margin-top: -6px;
+  }
+  .precio {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+  }
+  .precio strong {
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .precio span {
+    font-size: 0.8125rem;
+    color: var(--muted);
+  }
+  .cifras {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+    gap: 1px;
+    margin: 0;
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--line);
+  }
+  .cifras div {
+    padding: 10px 12px;
+    background: rgb(17 19 20 / 0.96);
+  }
+  .cifras dt {
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+  .cifras dd {
+    margin: 2px 0 0;
+    white-space: nowrap;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .estado.disponible {
+    color: var(--accent);
+  }
+  .estado.reservado {
+    color: #e3b65c;
+  }
+  .atributos {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .atributos li {
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.07);
+    font-size: 0.8125rem;
+  }
+  .nota {
+    font-size: 0.8125rem;
+    color: var(--muted);
+  }
+  .ficha-acciones {
+    display: grid;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .fila {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .ficha-acciones .fila .btn {
+    flex: 1 1 auto;
+  }
+  [data-orbitar][aria-pressed='true'] {
+    background: rgb(108 193 122 / 0.18);
+    color: var(--accent);
+  }
+
+  .dibujo {
+    display: grid;
+    gap: 8px;
+    margin: 0 20px 20px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+    font-size: 0.875rem;
+  }
+  .dibujo .ayuda,
+  .dibujo .solo-dibujo {
+    display: none;
+  }
+  .dibujo[data-estado='dibujando'] .ayuda {
+    display: block;
+  }
+  .dibujo[data-estado='dibujando'] .solo-dibujo {
+    display: inline-flex;
+  }
+  .dibujo[data-estado='dibujando'] [data-dibujo-accion='iniciar'] {
+    display: none;
+  }
+  .dibujo .ayuda {
+    color: var(--muted);
+  }
+
+  .video {
+    width: min(1100px, 94vw);
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius);
+    background: #050505;
+    overflow: hidden;
+  }
+  .video::backdrop {
+    background: rgb(11 12 13 / 0.86);
+  }
+  .video video {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+  }
+  .video .icon-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 1;
+  }
+
+  /* Tablet: superficies más angostas */
+  @media (max-width: 1100px) {
+    .rail {
+      width: 300px;
+    }
+    .ficha {
+      width: 340px;
+    }
+  }
+  /* Pantallas bajas o medianas: la ficha prioriza precio y acciones */
+  @media (max-width: 1100px), (max-height: 820px) {
+    .ficha .atributos {
+      display: none;
+    }
+  }
+
+  /* Celular: la lista y la ficha son hojas inferiores, por encima de la franja de atribución de Google */
+  @media (max-width: 767px) {
+    .llegada {
+      left: 16px;
+      right: 16px;
+      bottom: 72px;
+    }
+    .llegada > p {
+      font-size: 1rem;
+    }
+    .globo::before {
+      background: linear-gradient(0deg, rgb(11 12 13 / 0.82) 0%, rgb(11 12 13 / 0) 62%);
+    }
+    .rail,
+    .ficha {
+      top: auto;
+      left: 8px;
+      right: 8px;
+      bottom: 40px;
+      width: auto;
+    }
+    .rail {
+      max-height: 46dvh;
+    }
+    .rail[data-plegado] > :not(.rail-top) {
+      display: none;
+    }
+    .rail-toggle {
+      display: grid;
+    }
+    [data-vista='llegada'] .rail,
+    .ficha[hidden] {
+      transform: translateY(24px);
+    }
+    /* En celular la ficha es corta: el 3D es la imagen y el lote queda visible encima */
+    .ficha {
+      max-height: 52dvh;
+    }
+    .ficha .foto,
+    .ficha .tagline,
+    .ficha .atributos {
+      display: none;
+    }
+    .ficha .cuerpo {
+      padding-top: 16px;
+    }
+    .ficha .lugar,
+    .ficha .cuerpo h2 {
+      padding-right: 48px;
+    }
+    [data-vista='lote'] .rail {
+      opacity: 0;
+      visibility: hidden;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .llegada,
+    .rail,
+    .ficha,
+    .globo::before {
+      transition: none;
+    }
+  }
+</style>

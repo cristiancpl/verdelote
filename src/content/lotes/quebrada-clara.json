@@ -14,5 +14,10 @@
     "Quebrada en el lindero",
     "Topografía suave",
     "Energía en la vía"
-  ]
+  ],
+  "mapa": {
+    "lat": 6.2903,
+    "lon": -75.4311,
+    "alt": 2200
+  }
 }

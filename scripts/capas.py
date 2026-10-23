@@ -10,6 +10,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent.parent
 LIMITES = RAIZ.parent / 'prep' / 'vuelo' / 'limites'
 SALIDA = RAIZ / 'public' / 'capas'
+MUNICIPIOS = ['Girardota', 'Barbosa', 'Guarne', 'San Pedro']
 
 
 def dp(puntos, tol):
@@ -81,8 +82,13 @@ def main():
     rings = [p[0] for p in ant['geometry']['coordinates'] if len(p[0]) > 50]
     guardar('antioquia', feature('Antioquia', [anillo(r, 0.004) for r in rings]))
 
-    kml = (LIMITES / 'verdelote_limites_pais.kml').read_text(encoding='utf-8', errors='replace')
-    guardar('girardota', feature('Girardota', [anillo(kml_poligono(kml, 'Girardota'), 0.0005)]))
+    kml = (LIMITES / 'verdelote_limites_pais.kml').read_text(encoding='utf-8')
+    # Municipios con lotes que están en el KML (La Ceja y El Retiro no vienen en el KML)
+    feats = [feature(n, [anillo(kml_poligono(kml, n), 0.0008)]) for n in MUNICIPIOS]
+    SALIDA.mkdir(parents=True, exist_ok=True)
+    ruta = SALIDA / 'municipios.geojson'
+    ruta.write_text(json.dumps({'type': 'FeatureCollection', 'features': feats}, separators=(',', ':')), encoding='utf-8')
+    print(f'{ruta.name}: {len(feats)} municipios, {ruta.stat().st_size // 1024} KB')
 
 
 if __name__ == '__main__':
