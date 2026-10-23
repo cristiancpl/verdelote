@@ -9,9 +9,9 @@
   "explanacion_m2": 1000,
   "precio_cop": 250000000,
   "estado": "disponible",
-  "destacado": true,
+  "destacado": false,
   "demo": false,
-  "orden": 1,
+  "orden": 3,
   "atributos": [
     "Escrituras al 100%",
     "Explanación de 1.000 m²",

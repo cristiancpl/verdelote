@@ -10,9 +10,9 @@
   "precio_cop": 110000000,
   "precio_max_cop": 250000000,
   "estado": "disponible",
-  "destacado": false,
+  "destacado": true,
   "demo": false,
-  "orden": 2,
+  "orden": 1,
   "unidades": [
     {
       "nombre": "Lote 1",
@@ -103,6 +103,34 @@
     "poster": "../../assets/lotes/villas-de-prado-verde/recorrido-poster.jpg",
     "duracion": "0:39",
     "descripcion": "Video aéreo de los cuatro lotes"
+  },
+  "vuelo": {
+    "src": "lotes/villas-de-prado-verde/vuelo.mp4",
+    "poster": "../../assets/lotes/villas-de-prado-verde/vuelo-inicio.jpg",
+    "final": "../../assets/lotes/villas-de-prado-verde/vuelo-final.jpg",
+    "duracion_s": 32,
+    "etapas": [
+      {
+        "nombre": "Planeta",
+        "desde_s": 0
+      },
+      {
+        "nombre": "Colombia",
+        "desde_s": 10.1
+      },
+      {
+        "nombre": "Antioquia",
+        "desde_s": 15.0
+      },
+      {
+        "nombre": "Guarne",
+        "desde_s": 19.6
+      },
+      {
+        "nombre": "Los lotes",
+        "desde_s": 24.4
+      }
+    ]
   },
   "coordenadas": {
     "lat": 6.327938,
