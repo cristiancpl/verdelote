@@ -1,12 +1,12 @@
 {
   "nombre": "Villas de Prado Verde",
-  "tagline": "Lotes campestres de 1.308 a 2.484 m² en Guarne",
+  "tagline": "Lotes campestres de 1.308 a 2.450 m² en Guarne",
   "resumen": "Parcelación de cuatro lotes en la vereda Yolombal, con acueducto, energía y vía pavimentada hasta cada lote",
   "municipio": "Guarne",
   "departamento": "Antioquia",
   "vereda": "Vereda Yolombal",
   "area_m2": 1308,
-  "area_max_m2": 2484,
+  "area_max_m2": 2450,
   "precio_cop": 110000000,
   "precio_max_cop": 250000000,
   "estado": "disponible",
@@ -16,7 +16,7 @@
   "unidades": [
     {
       "nombre": "Lote 1",
-      "area_m2": 2484
+      "area_m2": 2450
     },
     {
       "nombre": "Lote 2",
@@ -47,7 +47,7 @@
       "etiqueta": "Desde"
     },
     {
-      "valor": "2.484 m²",
+      "valor": "2.450 m²",
       "etiqueta": "El más grande"
     },
     {
@@ -79,7 +79,7 @@
     },
     {
       "src": "../../assets/lotes/villas-de-prado-verde/lote-1.jpg",
-      "alt": "Lote 1, de 2.484 m², resaltado desde el aire"
+      "alt": "Lote 1, de 2.450 m², resaltado desde el aire"
     },
     {
       "src": "../../assets/lotes/villas-de-prado-verde/lote-2.jpg",
@@ -141,7 +141,7 @@
     {
       "etiqueta": "La parcelación",
       "titulo": "Cuatro lotes para elegir",
-      "texto": "De 1.308 a 2.484 m², con vía interna a cada uno",
+      "texto": "De 1.308 a 2.450 m², con vía interna a cada uno",
       "media": "../../assets/lotes/villas-de-prado-verde/plano-lotes.jpg"
     },
     {
