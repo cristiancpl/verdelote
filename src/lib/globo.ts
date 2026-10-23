@@ -492,11 +492,28 @@ export async function iniciarGlobo() {
     g.ids.forEach((id) => enGrupo.set(id, g));
   }
 
+  // Lote abierto: el pin se vuelve una placa oscura con nombre y precio, anclada al lote por una punta
+  const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const placa = (l: LoteGlobo) => {
+    const ancho = Math.ceil(Math.max(l.nombre.length * 9.4, l.precioCorto.length * 8.2) + 36);
+    const t = document.createElement('template');
+    t.innerHTML =
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${ancho}" height="68" viewBox="0 0 ${ancho} 68">` +
+      `<rect x="1" y="1" width="${ancho - 2}" height="54" rx="14" fill="rgba(17,19,20,0.94)" stroke="#b78f54" stroke-width="1.5"/>` +
+      `<path d="M${ancho / 2 - 8} 55 L${ancho / 2} 67 L${ancho / 2 + 8} 55 Z" fill="rgba(17,19,20,0.94)" stroke="#b78f54" stroke-width="1.5"/>` +
+      `<rect x="${ancho / 2 - 9}" y="52" width="18" height="4" fill="rgba(17,19,20,0.94)"/>` +
+      `<text x="18" y="24" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="600" fill="#f4f5f3">${esc(l.nombre)}</text>` +
+      `<text x="18" y="44" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="13" font-weight="500" fill="#c49e64">${esc(l.precioCorto)}</text>` +
+      `</svg>`;
+    return t;
+  };
   const marcarActivo = () =>
     marcadoresLote.forEach((m, id) => {
-      m.replaceChildren(pin(colorLote(porId.get(id)!, id === abierto), undefined, id === abierto ? 1.25 : 1));
-      // El lote abierto ya se nombra en la ficha: su pin queda sin texto para no repetirlo
-      m.label = id === abierto ? null : etiquetaLote(porId.get(id)!);
+      const l = porId.get(id)!;
+      const activo = id === abierto;
+      m.replaceChildren(activo ? placa(l) : pin(colorLote(l, false)));
+      // El lote abierto ya lleva su nombre en la placa: sin etiqueta nativa para no repetirlo
+      m.label = activo ? null : etiquetaLote(l);
     });
 
   // De lejos los lotes se agrupan en un marcador por región con el número de lotes; un clic baja a la región
