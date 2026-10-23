@@ -359,7 +359,7 @@ const fichaLd = {
                 <Image src={h.media} alt="" widths={[500, 900]} sizes="(max-width: 700px) 100vw, 1px" />
               </div>
               <div class="txt">
-                <span class="n">{String(i + 1).padStart(2, '0')} · {h.etiqueta}</span>
+                <span class="n">{h.etiqueta}</span>
                 <h3>{h.titulo}</h3>
                 <p>{h.texto}</p>
               </div>
@@ -475,6 +475,10 @@ const fichaLd = {
                     Ver el vuelo
                   </button>
                 )}
+                <a class="btn btn-glass" href={url(`globo/#${lote.id}`)}>
+                  <Icon name="globe-hemisphere-west" />
+                  Ver en el mapa 3D
+                </a>
                 {rutaUrl && (
                   <a class="btn btn-light" href={rutaUrl} target="_blank" rel="noopener">
                     <Icon name="navigation-arrow" />

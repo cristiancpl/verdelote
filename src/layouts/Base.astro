@@ -1,7 +1,8 @@
 ---
 import { Image } from 'astro:assets';
+import { getCollection } from 'astro:content';
 import marca from '../assets/marca/am-marca-claro.png';
-import { absoluteUrl, url } from '../lib/format';
+import { absoluteUrl, formatTelefono, url } from '../lib/format';
 import '../styles/global.css';
 
 interface Props {
@@ -20,6 +21,16 @@ interface Props {
 }
 
 const SITE_NAME = 'AM Grupo Inmobiliario';
+// Contacto general del sitio (botón "Agendar visita" del menú y pie de página)
+const CONTACTO = { nombre: 'Andrés', whatsapp: '573216953286' };
+const whatsappGeneral = `https://wa.me/${CONTACTO.whatsapp}?text=${encodeURIComponent(
+  `Hola ${CONTACTO.nombre}, vi los lotes de ${SITE_NAME} y quiero agendar una visita`,
+)}`;
+// Municipios con lotes: el pie los enlaza al listado ya filtrado
+const municipios = [...new Set((await getCollection('lotes')).map((l) => l.data.municipio))].sort((a, b) =>
+  a.localeCompare(b, 'es'),
+);
+const enInicio = Astro.url.pathname === url('/');
 const {
   title,
   description = 'Lotes en Antioquia con recorrido en video, datos claros y contacto directo con el dueño',
@@ -75,17 +86,60 @@ const ldJson = (node: object) => JSON.stringify(node).replace(/</g, '\\u003c');
           <span>Grupo Inmobiliario</span>
         </a>
         <nav aria-label="Principal">
-          <a href={url('#lotes')} aria-current={Astro.url.pathname === url('/') ? 'page' : undefined}>Lotes</a>
+          <a href={url('#lotes')} aria-current={enInicio ? 'page' : undefined}>Lotes</a>
+          <a href={url('globo/')} aria-current={Astro.url.pathname === url('globo/') ? 'page' : undefined}>Mapa 3D</a>
+          <a href="#contacto">Contacto</a>
         </nav>
-        <div class="right"><slot name="nav-right" /></div>
+        <div class="right">
+          <slot name="nav-right">
+            <a class="btn btn-glass btn-sm" href={whatsappGeneral} target="_blank" rel="noopener">Agendar visita</a>
+          </slot>
+        </div>
       </div>
     </header>
     <slot name="localbar" />
     <main class:list={{ 'with-nav': nav === 'solid' }}>
       <slot />
     </main>
-    <footer class="wrap site-footer">
-      <p>AM Grupo Inmobiliario</p>
+    <footer class="site-footer no-print" id="contacto">
+      <div class="wrap">
+        <div class="cols">
+          <div class="about">
+            <Image src={marca} alt={SITE_NAME} width={66} height={32} densities={[1, 2, 3]} />
+            <p>Lotes campestres en Antioquia, con recorrido en video y mapa 3D</p>
+          </div>
+          <div>
+            <h2>Explorar</h2>
+            <ul>
+              <li><a href={url('#lotes')}>Lotes</a></li>
+              <li><a href={url('globo/')}>Mapa 3D</a></li>
+            </ul>
+          </div>
+          <div>
+            <h2>Zonas</h2>
+            <ul>
+              {municipios.map((m) => (
+                <li>
+                  <a href={url(`?municipio=${encodeURIComponent(m)}#lotes`)}>{m}</a>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h2>Contacto</h2>
+            <ul>
+              <li>
+                <a href={whatsappGeneral} target="_blank" rel="noopener">WhatsApp {formatTelefono(CONTACTO.whatsapp)}</a>
+              </li>
+              <li>Atiende {CONTACTO.nombre}</li>
+            </ul>
+          </div>
+        </div>
+        <div class="legal">
+          <span>© {new Date().getFullYear()} {SITE_NAME}</span>
+          <span>Áreas y ubicaciones aproximadas, sujetas a verificación en escrituras</span>
+        </div>
+      </div>
     </footer>
     <div class="toast" role="status" aria-live="polite" data-toast></div>
   </body>
@@ -136,6 +190,10 @@ const ldJson = (node: object) => JSON.stringify(node).replace(/</g, '\\u003c');
     text-transform: uppercase;
     color: rgb(244 245 243 / 0.82);
   }
+  nav {
+    display: flex;
+    gap: 28px;
+  }
   nav a {
     display: inline-flex;
     align-items: center;
@@ -158,10 +216,60 @@ const ldJson = (node: object) => JSON.stringify(node).replace(/</g, '\\u003c');
     padding-top: var(--nav-h);
   }
   .site-footer {
-    padding-top: 56px;
-    padding-bottom: 56px;
+    padding: 56px 0 40px;
+    border-top: 1px solid var(--line);
+    font-size: 0.9375rem;
+  }
+  .cols {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr 1.2fr;
+    gap: 32px;
+  }
+  .about img {
+    height: 32px;
+    width: auto;
+  }
+  .about p {
+    max-width: 32ch;
+    margin-top: 14px;
     color: var(--muted);
-    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+  .site-footer h2 {
+    margin-bottom: 10px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    color: var(--muted);
+  }
+  .site-footer ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 4px;
+  }
+  .site-footer li a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+  }
+  .site-footer li a:hover {
+    color: var(--accent);
+  }
+  .legal {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px 24px;
+    margin-top: 40px;
+    font-size: 0.75rem;
+    color: #8a908c;
+  }
+  @media (max-width: 1100px) {
+    .cols {
+      grid-template-columns: 1fr 1fr;
+    }
   }
   @media (max-width: 700px) {
     .nav .wrap {

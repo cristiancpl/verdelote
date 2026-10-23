@@ -14,6 +14,9 @@ interface Props {
 const { lote, featured = false } = Astro.props;
 const d = lote.data;
 const conRecorrido = tieneRecorrido(d);
+const lugar = [d.vereda, d.municipio].filter(Boolean).join(', ');
+// Etiquetas: lotes de la parcelación (en dorado) y los dos primeros atributos
+const etiquetas = d.atributos.filter((a) => !/parcelaci/i.test(a)).slice(0, 2);
 ---
 
 <a
@@ -26,11 +29,12 @@ const conRecorrido = tieneRecorrido(d);
   data-area={d.area_m2}
   data-precio={d.precio_cop ?? 0}
   data-recorrido={conRecorrido ? '1' : '0'}
+  data-unidades={d.unidades.length || 1}
 >
   {
     d.portada ? (
       <div class="img">
-        <Image src={d.portada} alt={d.nombre} widths={[480, 800]} sizes="(max-width: 700px) 100vw, (max-width: 1100px) 50vw, 400px" />
+        <Image src={d.portada} alt={d.nombre} widths={[640, 1000, 1400]} sizes="(max-width: 700px) 100vw, (max-width: 1320px) 50vw, 640px" />
       </div>
     ) : (
       <div class="img noimg">
@@ -39,16 +43,29 @@ const conRecorrido = tieneRecorrido(d);
       </div>
     )
   }
-  <div class="meta">
-    <h3>{nombreCorto(d.nombre)}</h3>
-    <span class="price">{textoPrecio(d)}</span>
-  </div>
-  <div class="sub">
-    <span>
-      {d.municipio} · {textoArea(d)}{d.estado !== 'disponible' && <span class="estado"> · {d.estado}</span>}
-    </span>
-    {conRecorrido && <span class="tour"><Icon name="play-circle" />Recorrido en video</span>}
-    {d.demo && <span class="demo">Demo</span>}
+  <div class="body">
+    <div class="meta">
+      <h3>{nombreCorto(d.nombre)}</h3>
+      <span class="price">{textoPrecio(d)}</span>
+    </div>
+    <p class="sub">
+      {lugar} · {textoArea(d)}
+      {d.estado !== 'disponible' && <span class="estado"> · {d.estado}</span>}
+    </p>
+    <ul class="tags">
+      {d.unidades.length > 0 && <li class="gold">{d.unidades.length} lotes</li>}
+      {d.unidades.length > 0 && <li>Parcelación</li>}
+      {etiquetas.map((t) => <li>{t}</li>)}
+      {
+        conRecorrido && (
+          <li class="tour">
+            <Icon name="play-circle" />
+            Video
+          </li>
+        )
+      }
+      {d.demo && <li>Demo</li>}
+    </ul>
   </div>
 </a>
 
@@ -56,15 +73,20 @@ const conRecorrido = tieneRecorrido(d);
   .card {
     display: flex;
     flex-direction: column;
-    border-radius: var(--radius);
+    border-radius: 24px;
+    overflow: hidden;
+    background: var(--bg-2);
+    transition: background 0.3s;
+  }
+  .card:hover {
+    background: color-mix(in srgb, var(--bg-2) 85%, #fff);
   }
   .card[hidden] {
     display: none;
   }
   .img {
-    border-radius: var(--radius);
     overflow: hidden;
-    aspect-ratio: 4 / 3;
+    aspect-ratio: 16 / 9;
     background: var(--card);
   }
   .img img {
@@ -74,45 +96,68 @@ const conRecorrido = tieneRecorrido(d);
     transition: transform 0.8s var(--ease);
   }
   .card:hover .img img {
-    transform: scale(1.04);
+    transform: scale(1.03);
+  }
+  .noimg {
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 8px;
+    color: var(--muted);
+  }
+  .body {
+    display: grid;
+    gap: 10px;
+    padding: 22px 26px 26px;
   }
   .meta {
     display: flex;
     justify-content: space-between;
+    align-items: baseline;
     gap: 16px;
-    margin-top: 14px;
   }
   h3 {
-    font-size: 1.125rem;
-    letter-spacing: -0.02em;
+    font-size: clamp(1.25rem, 1.8vw, 1.625rem);
+    letter-spacing: -0.025em;
   }
   .price {
-    font-weight: 500;
+    font-size: clamp(1rem, 1.3vw, 1.1875rem);
+    font-weight: 600;
     white-space: nowrap;
   }
   .sub {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 12px;
-    margin-top: 2px;
     color: var(--muted);
     font-size: 0.9375rem;
   }
   .estado {
     text-transform: capitalize;
   }
-  .tour {
+  .tags {
+    list-style: none;
+    margin: 2px 0 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .tags li {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    color: var(--accent);
-    font-weight: 500;
-  }
-  .demo {
-    padding: 0 10px;
-    border: 1px solid var(--line);
+    gap: 5px;
+    padding: 5px 11px;
     border-radius: 999px;
-    font-size: 0.75rem;
+    background: rgb(255 255 255 / 0.07);
+    font-size: 0.8125rem;
+  }
+  .tags .gold,
+  .tags .tour {
+    color: var(--accent);
+    background: rgb(183 143 84 / 0.12);
+  }
+  @media (max-width: 1100px) {
+    .meta {
+      flex-direction: column;
+      gap: 4px;
+    }
   }
 </style>

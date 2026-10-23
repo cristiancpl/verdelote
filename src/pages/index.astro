@@ -2,6 +2,7 @@
 import { getImage } from 'astro:assets';
 import { getCollection } from 'astro:content';
 import Icon from '../components/Icon.astro';
+import antioquia3d from '../assets/globo/antioquia.jpg';
 import LoteCard from '../components/LoteCard.astro';
 import PauseButton from '../components/PauseButton.astro';
 import Base from '../layouts/Base.astro';
@@ -52,6 +53,9 @@ const listado = {
   })),
 };
 const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) => a.localeCompare(b, 'es'));
+
+// Bloque "Antioquia, en 3D": cuadro de Antioquia del vuelo publicado (Earth Studio, con su atribución)
+const img3d = await getImage({ src: antioquia3d, width: 2000, format: 'webp' });
 ---
 
 <Base
@@ -61,17 +65,8 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
   imageAlt={d?.nombre}
   jsonLd={listado}
 >
-  {
-    destacado && (
-      <a slot="nav-right" class="btn btn-glass btn-sm" href={fichaUrl}>
-        <span class="lg">Ver {nombreCorto(destacado.data.nombre)}</span>
-        <span class="sm">Ver el lote</span>
-      </a>
-    )
-  }
-
   <section
-    class:list={['stage', 'hero', { llegada: modo !== 'vuelo', sobrio: modo === 'estatico' }]}
+    class:list={['stage', 'hero', { llegada: modo !== 'vuelo', 'intro-out': modo !== 'vuelo', sobrio: modo === 'estatico' }]}
     id="hero"
     data-stage
     data-modo={modo}
@@ -98,8 +93,12 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
     {modo === 'estatico' && <div class="bg bg-sobrio"></div>}
 
     <div class="intro" data-intro>
-      <h1>Encuentra tu lugar<br />en la montaña</h1>
-      <p>Lotes en Antioquia que puedes recorrer antes de visitarlos</p>
+      <h1>Tu próximo lote. <span>Visto desde el cielo.</span></h1>
+      <p>Lotes en Antioquia que recorres antes de visitarlos</p>
+      <div class="actions">
+        <a class="btn btn-primary" href={url('globo/')}>Explorar en 3D <Icon name="arrow-right" /></a>
+        <a class="btn btn-glass" href="#lotes">Ver los lotes</a>
+      </div>
     </div>
 
     {
@@ -192,7 +191,6 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
             {clip && clipPoster && <PauseButton videoId="feat-video" />}
           </div>
           <div class="info">
-            <p class="eyebrow">Destacado</p>
             <h2 class="h-lg">{nombreCorto(d.nombre)}</h2>
             <p class="lead">{d.resumen}</p>
             <div class="facts">
@@ -213,21 +211,44 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
     )
   }
 
+  <section class="wrap band3d-wrap" aria-labelledby="titulo-3d">
+    <a class="band3d reveal" href={url('globo/')}>
+      <img src={img3d.src} alt="" loading="lazy" decoding="async" />
+      <div class="txt">
+        <h2 id="titulo-3d">Antioquia, en 3D.</h2>
+        <p>Vuela hasta cada lote, mira el terreno y su entorno, y abre la ficha sin salir del mapa</p>
+        <span class="btn btn-primary">Abrir el mapa 3D <Icon name="arrow-right" /></span>
+      </div>
+    </a>
+  </section>
+
   {/* Con un solo lote la grilla queda vacía: se oculta y el ancla #lotes pasa al bloque destacado */}
   <section class="wrap lotes" id={resto.length ? 'lotes' : undefined} aria-label="Lotes disponibles" hidden={resto.length === 0}>
-    <div class="toolbar">
+    <form class="toolbar" aria-label="Filtrar lotes" data-filtros>
       <div class="thead">
-        <h2>Más lotes en Antioquia</h2>
-        <output class="count" aria-live="polite" data-count>{resto.length === 1 ? '1 lote' : `${resto.length} lotes`}</output>
+        <h2>Más lotes</h2>
+        <output class="count" aria-live="polite" data-count></output>
       </div>
-      <form class="filters" aria-label="Filtrar lotes" data-filtros>
-        <div class="field">
-          <label for="f-municipio">Municipio</label>
-          <select id="f-municipio" name="municipio">
-            <option value="">Todos</option>
-            {municipios.map((m) => <option value={m}>{m}</option>)}
-          </select>
-        </div>
+      <div class="chips">
+        <fieldset class="municipios">
+          <legend class="sr-only">Municipio</legend>
+          <label class="chip"><input type="radio" name="municipio" value="" checked /><span>Todos</span></label>
+          {
+            municipios.map((m) => (
+              <label class="chip">
+                <input type="radio" name="municipio" value={m} />
+                <span>{m}</span>
+              </label>
+            ))
+          }
+        </fieldset>
+        <button type="button" class="chip more" aria-expanded="false" aria-controls="mas-filtros" data-mas>
+          <Icon name="sliders-horizontal" />
+          Filtros
+          <span class="n" data-mas-n hidden></span>
+        </button>
+      </div>
+      <div class="filters" id="mas-filtros" hidden data-panel>
         <div class="field">
           <label for="f-area">Área</label>
           <select id="f-area" name="area">
@@ -251,8 +272,8 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
           <span class="knob" aria-hidden="true"></span>
           Solo con recorrido
         </label>
-      </form>
-    </div>
+      </div>
+    </form>
 
     <div class="grid">
       {destacado && <LoteCard lote={destacado} featured />}
@@ -286,7 +307,7 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
     const dur = Number(v.dataset.duracion);
     const pasos = [...stage.querySelectorAll<HTMLElement>('[data-journey] > div')];
     const pintar = (t: number, fin = false) => {
-      stage.classList.toggle('intro-out', fin || t > 6.5);
+      stage.classList.toggle('intro-out', fin || t > dur - 4.5);
       stage.classList.toggle('llegada', fin || t > dur - 4.5);
       for (const p of pasos) {
         const a = Number(p.dataset.a);
@@ -349,6 +370,14 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
   // Filtros. La tarjeta del lote destacado vive en la grilla oculta: solo aparece si hay filtros activos y coincide,
   // así "solo con recorrido" o un municipio encuentran el destacado aunque ya se vea arriba
   const form = document.querySelector<HTMLFormElement>('[data-filtros]')!;
+  const panel = document.querySelector<HTMLElement>('[data-panel]')!;
+  const btnMas = document.querySelector<HTMLButtonElement>('[data-mas]')!;
+  const nMas = document.querySelector<HTMLElement>('[data-mas-n]')!;
+  btnMas.addEventListener('click', () => {
+    const abrir = panel.hidden;
+    panel.hidden = !abrir;
+    btnMas.setAttribute('aria-expanded', String(abrir));
+  });
   const cards = [...document.querySelectorAll<HTMLElement>('[data-lote]')];
   const count = document.querySelector<HTMLOutputElement>('[data-count]')!;
   const empty = document.querySelector<HTMLElement>('[data-empty]')!;
@@ -363,6 +392,7 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
     const [areaMin, areaMax] = areaSel.split('-').map((x) => (x ? Number(x) : undefined));
     const precioMax = Number(precioSel) || Infinity;
     let visibles = 0;
+    let unidades = 0;
     for (const card of cards) {
       const area = Number(card.dataset.area);
       const coincide =
@@ -373,18 +403,33 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
         (!soloRecorrido || card.dataset.recorrido === '1');
       const ok = coincide && (activos || !('featured' in card.dataset));
       card.hidden = !ok;
-      if (ok) visibles++;
+      if (ok) {
+        visibles++;
+        unidades += Number(card.dataset.unidades) || 1;
+      }
     }
-    count.value = visibles === 1 ? '1 lote' : `${visibles} lotes`;
+    // "2 proyectos · 9 lotes" cuando hay parcelaciones; si no, solo el número de lotes
+    const lotesTxt = unidades === 1 ? '1 lote' : `${unidades} lotes`;
+    count.value =
+      unidades > visibles ? `${visibles === 1 ? '1 proyecto' : `${visibles} proyectos`} · ${lotesTxt}` : lotesTxt;
     empty.hidden = visibles > 0;
+    // Filtros dentro del panel: el botón muestra cuántos hay activos
+    const enPanel = [areaSel, precioSel, soloRecorrido].filter(Boolean).length;
+    nMas.hidden = enPanel === 0;
+    nMas.textContent = String(enPanel);
   }
 
   form.addEventListener('change', aplicar);
   document.querySelector('[data-reset]')!.addEventListener('click', () => {
     form.reset();
     aplicar();
-    form.querySelector('select')?.focus();
+    form.querySelector<HTMLInputElement>('input[name="municipio"]')?.focus();
   });
+  // Enlaces del pie (?municipio=Guarne#lotes) llegan con el municipio elegido
+  const pedido = new URLSearchParams(location.search).get('municipio');
+  const chip = [...form.querySelectorAll<HTMLInputElement>('input[name="municipio"]')].find((i) => i.value === pedido);
+  if (chip) chip.checked = true;
+  aplicar();
 </script>
 
 <style>
@@ -396,29 +441,58 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
   }
 
   /* Portada: lado derecho libre para la marca de Google Earth del video */
+  /* Portada: título y acciones abajo a la izquierda, sobre un velo; queda hasta la llegada al lote */
   .intro {
     position: absolute;
     inset: 0;
-    z-index: 2;
+    z-index: 3;
     display: grid;
-    place-content: center;
-    padding: 0 var(--gutter);
-    text-align: center;
-    text-shadow: 0 2px 36px rgb(0 0 0 / 0.5);
-    transition: opacity 1.2s var(--ease);
+    align-content: end;
+    justify-items: start;
+    gap: 18px;
+    max-width: calc(var(--max) + 2 * var(--gutter));
+    margin: 0 auto;
+    padding: 0 var(--gutter) 190px;
+    text-shadow: 0 2px 30px rgb(0 0 0 / 0.45);
+    transition: opacity 1.2s var(--ease), visibility 1.2s;
+    pointer-events: none;
+  }
+  .intro > * {
+    pointer-events: auto;
+    max-width: 760px;
+  }
+  .hero::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background:
+      linear-gradient(180deg, rgb(0 0 0 / 0.45) 0%, rgb(0 0 0 / 0) 22%),
+      linear-gradient(90deg, rgb(11 12 13 / 0.72) 0%, rgb(11 12 13 / 0) 58%),
+      linear-gradient(0deg, rgb(11 12 13 / 0.6) 0%, rgb(11 12 13 / 0) 40%);
   }
   .intro h1 {
-    font-size: clamp(2.5rem, 6.6vw, 6.5rem);
-    line-height: 0.98;
+    font-size: clamp(2.75rem, 5.4vw, 5rem);
+    line-height: 1.02;
+    letter-spacing: -0.045em;
+    padding-bottom: 2px;
+  }
+  .intro h1 span {
+    display: block;
+    color: rgb(244 245 243 / 0.58);
   }
   .intro p {
-    margin-top: 18px;
-    font-size: clamp(1.0625rem, 1.9vw, 1.375rem);
+    font-size: clamp(1.0625rem, 1.5vw, 1.25rem);
     color: rgb(255 255 255 / 0.85);
+  }
+  .intro .actions {
+    margin-top: 8px;
+    text-shadow: none;
   }
   .intro-out .intro {
     opacity: 0;
-    pointer-events: none;
+    visibility: hidden;
   }
   .ctl {
     position: absolute;
@@ -555,6 +629,62 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
     color: var(--muted);
   }
 
+  /* Antioquia, en 3D: una pieza grande que lleva al globo */
+  .band3d-wrap {
+    padding-bottom: 120px;
+  }
+  .band3d {
+    position: relative;
+    display: block;
+    height: clamp(420px, 42vw, 580px);
+    border-radius: 28px;
+    overflow: hidden;
+    isolation: isolate;
+    background: var(--card);
+  }
+  .band3d img,
+  .band3d .fill {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 1.2s var(--ease);
+  }
+  .band3d:hover img {
+    transform: scale(1.03);
+  }
+  .band3d::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgb(11 12 13 / 0.92) 0%, rgb(11 12 13 / 0.55) 42%, rgb(11 12 13 / 0) 72%);
+  }
+  .band3d .txt {
+    position: absolute;
+    z-index: 1;
+    left: 56px;
+    top: 50%;
+    transform: translateY(-50%);
+    max-width: 440px;
+    display: grid;
+    justify-items: start;
+    gap: 16px;
+  }
+  .band3d h2 {
+    font-size: clamp(2.25rem, 3.6vw, 3.25rem);
+    line-height: 1.04;
+    letter-spacing: -0.04em;
+  }
+  .band3d p {
+    font-size: 1.125rem;
+    line-height: 1.45;
+    color: rgb(244 245 243 / 0.82);
+  }
+  .band3d .btn {
+    margin-top: 6px;
+  }
+
   /* Lotes y filtros */
   .lotes {
     scroll-margin-top: 24px;
@@ -564,8 +694,75 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
     flex-wrap: wrap;
     align-items: end;
     gap: 20px 16px;
-    padding: 36px 0;
-    border-top: 1px solid var(--line);
+    padding: 0 0 28px;
+  }
+  .chips,
+  .municipios {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .municipios {
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .chip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 44px;
+    padding: 0 18px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.9375rem;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+  }
+  .chip input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .chip:has(input:checked) {
+    background: var(--text);
+    color: var(--bg);
+    font-weight: 500;
+  }
+  .chip:has(input:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+  }
+  .chip.more {
+    background: transparent;
+    border-color: rgb(255 255 255 / 0.18);
+  }
+  .chip.more[aria-expanded='true'] {
+    background: var(--card);
+  }
+  .chip .n {
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 20px;
+    text-align: center;
+  }
+  .filters[hidden] {
+    display: none;
+  }
+  .filters {
+    flex-basis: 100%;
+    justify-content: flex-end;
   }
   .thead {
     display: grid;
@@ -651,9 +848,9 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
   }
   .grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 40px 24px;
-    padding-bottom: 96px;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+    padding-bottom: 120px;
   }
   .empty {
     display: grid;
@@ -672,8 +869,18 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
       grid-template-columns: 1fr;
       gap: 32px;
     }
-    .grid {
-      grid-template-columns: repeat(2, 1fr);
+    .band3d::after {
+      background: linear-gradient(0deg, rgb(11 12 13 / 0.94) 0%, rgb(11 12 13 / 0.5) 48%, rgb(11 12 13 / 0) 78%);
+    }
+    .band3d .txt {
+      top: auto;
+      bottom: 40px;
+      left: 36px;
+      right: 36px;
+      transform: none;
+    }
+    .filters {
+      justify-content: flex-start;
     }
     .ctl {
       right: var(--gutter);
