@@ -1,8 +1,8 @@
 ---
 import { Image } from 'astro:assets';
 import type { CollectionEntry } from 'astro:content';
-import { formatArea, formatPrecio, nombreCorto, url } from '../lib/format';
-import { tieneRecorrido } from '../lib/lote';
+import { nombreCorto, url } from '../lib/format';
+import { textoArea, textoPrecio, tieneRecorrido } from '../lib/lote';
 import Icon from './Icon.astro';
 
 interface Props {
@@ -24,7 +24,7 @@ const conRecorrido = tieneRecorrido(d);
   hidden={featured}
   data-municipio={d.municipio}
   data-area={d.area_m2}
-  data-precio={d.precio_cop}
+  data-precio={d.precio_cop ?? 0}
   data-recorrido={conRecorrido ? '1' : '0'}
 >
   {
@@ -41,11 +41,11 @@ const conRecorrido = tieneRecorrido(d);
   }
   <div class="meta">
     <h3>{nombreCorto(d.nombre)}</h3>
-    <span class="price">{formatPrecio(d.precio_cop)}</span>
+    <span class="price">{textoPrecio(d)}</span>
   </div>
   <div class="sub">
     <span>
-      {d.municipio} · {formatArea(d.area_m2)}{d.estado !== 'disponible' && <span class="estado"> · {d.estado}</span>}
+      {d.municipio} · {textoArea(d)}{d.estado !== 'disponible' && <span class="estado"> · {d.estado}</span>}
     </span>
     {conRecorrido && <span class="tour"><Icon name="play-circle" />Recorrido en video</span>}
     {d.demo && <span class="demo">Demo</span>}

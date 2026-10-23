@@ -1,4 +1,5 @@
 import type { CollectionEntry } from 'astro:content';
+import { formatArea, formatPrecio, formatPrecioCorto, formatPrecioM2 } from './format';
 
 type Datos = CollectionEntry<'lotes'>['data'];
 
@@ -13,3 +14,18 @@ export const primerClip = (d: Datos) => {
   const r = d.recorrido.find((x) => x.video);
   return r ? { src: r.video!, poster: r.poster } : undefined;
 };
+
+// Área y precio de un lote o de una parcelación con rango (area_max_m2, precio_max_cop)
+export const textoArea = (d: Datos) =>
+  d.area_max_m2 ? `${formatArea(d.area_m2).replace(' m²', '')} a ${formatArea(d.area_max_m2)}` : formatArea(d.area_m2);
+export const textoPrecio = (d: Datos) =>
+  !d.precio_cop ? 'Precio a consultar' : d.precio_max_cop ? `Desde ${formatPrecio(d.precio_cop)}` : formatPrecio(d.precio_cop);
+export const textoPrecioCorto = (d: Datos) =>
+  !d.precio_cop ? 'A consultar' : d.precio_max_cop ? `Desde ${formatPrecioCorto(d.precio_cop)}` : formatPrecioCorto(d.precio_cop);
+/** Línea bajo el precio: valor por m² de un lote, el rango de una parcelación, o cómo pedirlo */
+export const textoPrecioDetalle = (d: Datos) =>
+  !d.precio_cop
+    ? 'Pregunta por WhatsApp'
+    : d.precio_max_cop
+    ? `${formatPrecioCorto(d.precio_cop)} a ${formatPrecioCorto(d.precio_max_cop)}`
+    : formatPrecioM2(d.precio_cop, d.area_m2);

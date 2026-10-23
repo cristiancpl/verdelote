@@ -12,9 +12,24 @@ const lotes = defineCollection({
       municipio: z.string(),
       departamento: z.string(),
       vereda: z.string().optional(),
+      // Parcelaciones: area_m2 y precio_cop son el mínimo; area_max_m2 y precio_max_cop el máximo del rango
       area_m2: z.number().positive(),
+      area_max_m2: z.number().positive().optional(),
       explanacion_m2: z.number().positive().optional(),
-      precio_cop: z.number().positive(),
+      // Sin precio_cop el lote se publica como "Precio a consultar"
+      precio_cop: z.number().positive().optional(),
+      precio_max_cop: z.number().positive().optional(),
+      // Lotes de una parcelación (nombre y área; precio y estado si se conocen)
+      unidades: z
+        .array(
+          z.object({
+            nombre: z.string(),
+            area_m2: z.number().positive(),
+            precio_cop: z.number().positive().optional(),
+            estado: z.enum(['disponible', 'reservado', 'vendido']).default('disponible'),
+          }),
+        )
+        .default([]),
       estado: z.enum(['disponible', 'reservado', 'vendido']),
       destacado: z.boolean().default(false),
       demo: z.boolean().default(false),
@@ -30,7 +45,8 @@ const lotes = defineCollection({
       ubicacion: z.object({ src: image(), alt: z.string() }).optional(),
       // Recorrido completo (vuelo 3D + lote). src es una ruta dentro de public/
       video_completo: z
-        .object({ src: z.string(), poster: image(), duracion: z.string() })
+        // descripcion: línea bajo "Ver el recorrido completo" (por defecto "Desde el espacio hasta el lote")
+        .object({ src: z.string(), poster: image(), duracion: z.string(), descripcion: z.string().optional() })
         .optional(),
       // Vuelo del planeta al lote (hero del inicio y botón "Ver el vuelo"). src es una ruta dentro de public/;
       // poster es el primer cuadro, final el último (lote resaltado) y etapas marcan la línea de tiempo

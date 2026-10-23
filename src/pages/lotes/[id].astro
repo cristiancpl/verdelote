@@ -5,7 +5,7 @@ import Icon, { type IconName } from '../../components/Icon.astro';
 import PauseButton from '../../components/PauseButton.astro';
 import Base from '../../layouts/Base.astro';
 import { absoluteUrl, formatArea, formatPrecio, formatPrecioM2, formatTelefono, nombreCorto, url } from '../../lib/format';
-import { primerClip } from '../../lib/lote';
+import { primerClip, textoArea, textoPrecio, textoPrecioDetalle } from '../../lib/lote';
 
 export async function getStaticPaths() {
   const lotes = await getCollection('lotes');
@@ -50,7 +50,7 @@ if (d.vuelo) {
 const playKey = d.video_completo ? 'completo' : d.vuelo ? 'vuelo' : undefined;
 const playTitulo = d.video_completo ? 'Ver el recorrido completo' : 'Ver el vuelo hasta el lote';
 const playDetalle = d.video_completo
-  ? `Desde el espacio hasta el lote · ${d.video_completo.duracion}`
+  ? `${d.video_completo.descripcion ?? 'Desde el espacio hasta el lote'} · ${d.video_completo.duracion}`
   : d.vuelo
     ? `Del planeta al lote · ${mmss(d.vuelo.duracion_s)}`
     : '';
@@ -61,9 +61,9 @@ const historiaPosters = await Promise.all(
 );
 
 const cifras = d.cifras ?? [
-  { valor: formatArea(d.area_m2), etiqueta: 'Área total' },
+  { valor: textoArea(d), etiqueta: d.area_max_m2 ? 'Por lote' : 'Área total' },
   ...(d.explanacion_m2 ? [{ valor: formatArea(d.explanacion_m2), etiqueta: 'Explanados' }] : []),
-  { valor: formatPrecio(d.precio_cop), etiqueta: d.estado === 'disponible' ? 'Precio' : `Precio · ${d.estado}` },
+  { valor: textoPrecio(d), etiqueta: d.estado === 'disponible' ? 'Precio' : `Precio · ${d.estado}` },
 ];
 
 const iconoAtributo = (texto: string): IconName => {
@@ -108,10 +108,10 @@ const aproximada = d.coordenadas?.aproximadas;
 const og = d.portada
   ? await getImage({ src: d.portada, width: 1200, height: 630, fit: 'cover', format: 'jpg', quality: 78 })
   : undefined;
-const descripcion = `${formatArea(d.area_m2)} en ${d.municipio}, ${d.departamento} por ${formatPrecio(d.precio_cop)}. ${d.resumen}`;
+const descripcion = `${textoArea(d)} en ${d.municipio}, ${d.departamento}, ${textoPrecio(d).toLowerCase()}. ${d.resumen}`;
 
 const fichaUrl = absoluteUrl(Astro.url.pathname);
-const precioM2 = formatPrecioM2(d.precio_cop, d.area_m2);
+const precioM2 = textoPrecioDetalle(d);
 const rutaUrl = d.coordenadas
   ? `https://www.google.com/maps/dir/?api=1&destination=${d.coordenadas.lat},${d.coordenadas.lon}`
   : undefined;
@@ -127,7 +127,7 @@ const mensajeWhatsapp = [
   '',
   ...datosClave,
   '',
-  `Precio: ${formatPrecio(d.precio_cop)} (${precioM2})`,
+  d.precio_cop ? `Precio: ${textoPrecio(d)} (${precioM2})` : 'Precio a consultar',
   `Recorrido en video y ficha: ${fichaUrl}`,
 ].join('\n');
 
@@ -169,8 +169,7 @@ const fichaLd = {
   offers: {
     '@type': 'Offer',
     url: fichaUrl,
-    price: d.precio_cop,
-    priceCurrency: 'COP',
+    ...(d.precio_cop && { price: d.precio_cop, priceCurrency: 'COP' }),
     availability: disponibilidad,
     availableAtOrFrom: lugarLd,
   },
@@ -204,7 +203,7 @@ const fichaLd = {
       <span class="name">{d.nombre}</span>
       <div class="right">
         <div class="pricebox">
-          <span class="price">{formatPrecio(d.precio_cop)}</span>
+          <span class="price">{textoPrecio(d)}</span>
           <small>{precioM2}</small>
         </div>
         <button
@@ -279,7 +278,7 @@ const fichaLd = {
           }
           <div class="grow"></div>
           <div class="price-dock">
-            <strong>{formatPrecio(d.precio_cop)}</strong>
+            <strong>{textoPrecio(d)}</strong>
             <span>{precioM2}</span>
           </div>
           {
@@ -386,6 +385,21 @@ const fichaLd = {
           ))
         }
       </div>
+
+      {
+        d.unidades.length > 0 && (
+          <ul class="unidades reveal" aria-label="Lotes de la parcelación">
+            {d.unidades.map((u) => (
+              <li class:list={{ off: u.estado !== 'disponible' }}>
+                <strong>{u.nombre}</strong>
+                <span>{formatArea(u.area_m2)}</span>
+                {u.precio_cop && <span>{formatPrecio(u.precio_cop)}</span>}
+                {u.estado !== 'disponible' && <em>{u.estado}</em>}
+              </li>
+            ))}
+          </ul>
+        )
+      }
 
       {
         (celdas.length > 0 || grupos.length > 0) && (
@@ -648,7 +662,7 @@ const fichaLd = {
     whatsappUrl && (
       <div class="bottombar no-print">
         <div class="bb-price">
-          <strong>{formatPrecio(d.precio_cop)}</strong>
+          <strong>{textoPrecio(d)}</strong>
           <span>{precioM2}</span>
         </div>
         <a class="btn btn-primary" href={whatsappUrl} target="_blank" rel="noopener">
@@ -807,6 +821,43 @@ const fichaLd = {
 </script>
 
 <style>
+  /* Lotes de una parcelación: una fila de piezas iguales bajo las cifras */
+  .unidades {
+    list-style: none;
+    margin: 28px 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 12px;
+  }
+  .unidades li {
+    display: grid;
+    gap: 4px;
+    padding: 18px 20px;
+    border-radius: var(--radius);
+    background: var(--card);
+  }
+  .unidades strong {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--accent);
+  }
+  .unidades span {
+    font-size: 1.375rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .unidades em {
+    font-style: normal;
+    font-size: 0.8125rem;
+    color: var(--muted);
+    text-transform: capitalize;
+  }
+  .unidades li.off {
+    opacity: 0.55;
+  }
+
   /* Las anclas y el foco con teclado no quedan bajo la barra fija; sin scroll de fondo con un diálogo abierto */
   :global(html) {
     scroll-padding-top: 76px;

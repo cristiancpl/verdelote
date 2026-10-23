@@ -1,0 +1,161 @@
+{
+  "nombre": "Villas de Prado Verde II",
+  "tagline": "Lotes campestres de 963 a 1.157 m² en Guarne",
+  "resumen": "Cinco lotes en la vereda Yolombal, a 10 minutos del parque de Guarne, con acceso por carretera veredal",
+  "municipio": "Guarne",
+  "departamento": "Antioquia",
+  "vereda": "Vereda Yolombal",
+  "area_m2": 963,
+  "area_max_m2": 1157,
+  "estado": "disponible",
+  "destacado": false,
+  "demo": false,
+  "orden": 3,
+  "unidades": [
+    {
+      "nombre": "Lote 1",
+      "area_m2": 963
+    },
+    {
+      "nombre": "Lote 2",
+      "area_m2": 1072
+    },
+    {
+      "nombre": "Lote 3",
+      "area_m2": 1157
+    },
+    {
+      "nombre": "Lote 4",
+      "area_m2": 989
+    },
+    {
+      "nombre": "Lote 5",
+      "area_m2": 1042
+    }
+  ],
+  "atributos": [
+    "En parcelación",
+    "Frente a carretera veredal",
+    "Terreno plano con pasto",
+    "A 10 minutos del parque de Guarne"
+  ],
+  "cifras": [
+    {
+      "valor": "5",
+      "etiqueta": "Lotes disponibles"
+    },
+    {
+      "valor": "963 m²",
+      "etiqueta": "Desde"
+    },
+    {
+      "valor": "1.157 m²",
+      "etiqueta": "El más grande"
+    },
+    {
+      "valor": "10 min",
+      "etiqueta": "Al parque de Guarne"
+    }
+  ],
+  "cercanias": [
+    {
+      "lugar": "Parque de Guarne",
+      "minutos": 10
+    }
+  ],
+  "portada": "../../assets/lotes/villas-de-prado-verde-ii/nubes-fincas.jpg",
+  "galeria": [
+    {
+      "src": "../../assets/lotes/villas-de-prado-verde-ii/nubes-fincas.jpg",
+      "alt": "Potrero del lote con fincas al fondo y cielo abierto"
+    },
+    {
+      "src": "../../assets/lotes/villas-de-prado-verde-ii/plano-predio.jpg",
+      "alt": "Plano del predio con los cinco lotes y sus áreas"
+    },
+    {
+      "src": "../../assets/lotes/villas-de-prado-verde-ii/potrero-arboles.jpg",
+      "alt": "Pasto y árboles en el borde del lote"
+    },
+    {
+      "src": "../../assets/lotes/villas-de-prado-verde-ii/potrero-fincas.jpg",
+      "alt": "Vista del terreno hacia las fincas vecinas"
+    },
+    {
+      "src": "../../assets/lotes/villas-de-prado-verde-ii/cielo-abierto.jpg",
+      "alt": "Cielo abierto sobre el lote"
+    },
+    {
+      "src": "../../assets/lotes/villas-de-prado-verde-ii/potrero-seto.jpg",
+      "alt": "Lote con seto y árboles al fondo"
+    },
+    {
+      "src": "../../assets/lotes/villas-de-prado-verde-ii/lindero-alambre.jpg",
+      "alt": "Cerca de alambre en el lindero"
+    },
+    {
+      "src": "../../assets/lotes/villas-de-prado-verde-ii/potrero-cerca.jpg",
+      "alt": "Postes de cerca junto al potrero"
+    }
+  ],
+  "video_completo": {
+    "src": "lotes/villas-de-prado-verde-ii/panoramica.mp4",
+    "poster": "../../assets/lotes/villas-de-prado-verde-ii/panoramica-poster.jpg",
+    "duracion": "0:15",
+    "descripcion": "Vuelta completa por el lote"
+  },
+  "coordenadas": {
+    "lat": 6.3300026,
+    "lon": -75.4028606,
+    "aproximadas": true
+  },
+  "mapa": {
+    "alt": 2200,
+    "camara": {
+      "range": 700,
+      "tilt": 58,
+      "heading": 20
+    }
+  },
+  "contacto": {
+    "nombre": "Andrés",
+    "whatsapp": "573216953286"
+  },
+  "frase": {
+    "principal": "Cinco lotes junto a la vía.",
+    "atenuada": "A diez minutos del parque de Guarne."
+  },
+  "historia": [
+    {
+      "etiqueta": "Ubicación",
+      "titulo": "Vereda Yolombal, Guarne",
+      "texto": "Campo abierto a 10 minutos del parque principal",
+      "media": "../../assets/lotes/villas-de-prado-verde-ii/nubes-fincas.jpg"
+    },
+    {
+      "etiqueta": "El terreno",
+      "titulo": "Plano y con pasto",
+      "texto": "Pasto, cerca y espacio para construir",
+      "media": "../../assets/lotes/villas-de-prado-verde-ii/panoramica-poster.jpg"
+    },
+    {
+      "etiqueta": "La parcelación",
+      "titulo": "Cinco lotes con acceso propio",
+      "texto": "De 963 a 1.157 m², todos sobre la carretera veredal",
+      "media": "../../assets/lotes/villas-de-prado-verde-ii/plano-predio.jpg"
+    }
+  ],
+  "recorrido": [
+    {
+      "titulo": "El terreno",
+      "descripcion": "Vuelta completa por el lote",
+      "poster": "../../assets/lotes/villas-de-prado-verde-ii/panoramica-poster.jpg"
+    },
+    {
+      "titulo": "Los vecinos",
+      "descripcion": "Fincas campestres alrededor",
+      "poster": "../../assets/lotes/villas-de-prado-verde-ii/potrero-fincas.jpg"
+    }
+  ],
+  "foto_mosaico": 2
+}

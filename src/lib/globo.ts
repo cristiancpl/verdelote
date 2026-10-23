@@ -59,6 +59,9 @@ const UMBRAL_LOTES = 450_000;
 const UMBRAL_NOMBRE_REGION = 120_000;
 const UMBRAL_MUNICIPIOS = 160_000;
 const UMBRAL_PAIS = 900_000;
+// Lotes a menos de 1,5 km entre sí comparten un pin (con el número) hasta que la cámara baja de 25 km
+const VECINOS_M = 1_500;
+const UMBRAL_VECINOS = 25_000;
 // Giro final del vuelo, como en el video: al final rota 35 grados hasta el rumbo de llegada
 const GIRO_FINAL = -35;
 
@@ -109,7 +112,11 @@ function camaraGrupo(lotes: LoteGlobo[]): Camara {
   const lat = lotes.reduce((s, l) => s + l.lat, 0) / lotes.length;
   const lng = lotes.reduce((s, l) => s + l.lng, 0) / lotes.length;
   const radio = Math.max(0, ...lotes.map((l) => metros({ lat, lng }, l)));
-  return { center: { lat, lng, altitude: 0 }, range: Math.min(110_000, Math.max(22_000, radio * 3.4 + 14_000)), tilt: 50, heading: 0 };
+  // Lotes casi juntos: la cámara baja lo suficiente para que cada pin se vea por separado
+  const minimo = radio < VECINOS_M ? 2_400 : 22_000;
+  // Centro a la altura de los lotes: de cerca, con altitud 0 la cámara quedaría bajo la montaña
+  const altitude = lotes.reduce((s, l) => s + l.alt, 0) / lotes.length;
+  return { center: { lat, lng, altitude }, range: Math.min(110_000, Math.max(minimo, radio * 3.4 + 1_400)), tilt: 50, heading: 0 };
 }
 
 const camaraLote = (l: LoteGlobo): Camara => ({
@@ -375,6 +382,29 @@ export async function iniciarGlobo() {
     m.addEventListener('gmp-click', () => irLote(l.id));
     marcadoresLote.set(l.id, m);
   }
+  // Grupos de lotes vecinos (mismo proyecto o predios contiguos): un pin con el número y el municipio
+  const grupos: { ids: string[]; m: any }[] = [];
+  for (const l of cfg.lotes) {
+    const g = grupos.find((x) => x.ids.some((id) => metros(porId.get(id)!, l) < VECINOS_M));
+    if (g) g.ids.push(l.id);
+    else grupos.push({ ids: [l.id], m: undefined });
+  }
+  const enGrupo = new Map<string, (typeof grupos)[number]>();
+  for (const g of grupos.filter((x) => x.ids.length > 1)) {
+    const lotesG = g.ids.map((id) => porId.get(id)!);
+    const c = centroide(lotesG);
+    g.m = new MarcadorClic({
+      position: { lat: c.lat, lng: c.lng, altitude: 40 },
+      altitudeMode: 'RELATIVE_TO_GROUND',
+      extruded: true,
+      sizePreserved: true,
+      label: lotesG[0].municipio,
+      title: `${lotesG.length} lotes en ${lotesG[0].municipio}`,
+    });
+    g.m.addEventListener('gmp-click', () => volar(camaraGrupo(lotesG), 3000));
+    g.ids.forEach((id) => enGrupo.set(id, g));
+  }
+
   const marcarActivo = () =>
     marcadoresLote.forEach((m, id) => {
       m.replaceChildren(pin(colorLote(porId.get(id)!, id === abierto), undefined, id === abierto ? 1.25 : 1));
@@ -413,7 +443,21 @@ export async function iniciarGlobo() {
       }
       mostrar(m, !cerca && n > 0);
     });
-    marcadoresLote.forEach((m, id) => mostrar(m, !dibujando && cerca && (pasa.has(id) || id === abierto)));
+    const juntos = rango > UMBRAL_VECINOS;
+    for (const g of grupos) {
+      if (!g.m) continue;
+      const n = g.ids.filter((id) => pasa.has(id)).length;
+      if (g.m.dataset.n !== String(n)) {
+        g.m.dataset.n = String(n);
+        g.m.replaceChildren(pin(DORADO, String(n), 1.15));
+      }
+      mostrar(g.m, !dibujando && cerca && juntos && n > 1 && !g.ids.includes(abierto ?? ''));
+    }
+    marcadoresLote.forEach((m, id) => {
+      const g = enGrupo.get(id);
+      const agrupado = g && juntos && g.ids.filter((x) => pasa.has(x)).length > 1 && !g.ids.includes(abierto ?? '');
+      mostrar(m, !dibujando && cerca && !agrupado && (pasa.has(id) || id === abierto));
+    });
     for (const e of etiquetas)
       mostrar(e.m, e.tipo === 'pais' ? rango > UMBRAL_PAIS : rango > UMBRAL_NOMBRE_REGION && rango <= UMBRAL_LOTES);
     municipios.forEach((l) => mostrar(l, rango <= UMBRAL_MUNICIPIOS));

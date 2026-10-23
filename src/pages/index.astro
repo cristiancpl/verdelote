@@ -6,7 +6,7 @@ import LoteCard from '../components/LoteCard.astro';
 import PauseButton from '../components/PauseButton.astro';
 import Base from '../layouts/Base.astro';
 import { absoluteUrl, formatArea, formatPrecio, formatPrecioCorto, formatPrecioM2, nombreCorto, url } from '../lib/format';
-import { primerClip } from '../lib/lote';
+import { primerClip, textoArea, textoPrecio, textoPrecioCorto, textoPrecioDetalle } from '../lib/lote';
 
 const lotes = (await getCollection('lotes')).sort((a, b) => a.data.orden - b.data.orden);
 const destacado = lotes.find((l) => l.data.destacado);
@@ -30,8 +30,8 @@ const etapas = vuelo
 const clipPoster = clip ? (await getImage({ src: clip.poster, width: 1400, format: 'webp' })).src : undefined;
 const datos = d
   ? [
-      ...(d.cifras ?? [{ valor: formatArea(d.area_m2), etiqueta: 'Área total' }]).slice(0, 3).map((c) => ({ valor: c.valor, etiqueta: c.etiqueta })),
-      { valor: formatPrecioCorto(d.precio_cop), etiqueta: formatPrecioM2(d.precio_cop, d.area_m2) },
+      ...(d.cifras ?? [{ valor: textoArea(d), etiqueta: 'Área total' }]).slice(0, 3).map((c) => ({ valor: c.valor, etiqueta: c.etiqueta })),
+      { valor: textoPrecioCorto(d), etiqueta: textoPrecioDetalle(d) },
     ]
   : [];
 
@@ -122,8 +122,8 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
                     <Icon name="map-pin" />
                     {d.municipio}, {d.departamento}
                   </span>
-                  <span>{formatArea(d.area_m2)}</span>
-                  <span>{formatPrecio(d.precio_cop)}</span>
+                  <span>{textoArea(d)}</span>
+                  <span>{textoPrecio(d)}</span>
                 </div>
               </div>
               <div class="actions">

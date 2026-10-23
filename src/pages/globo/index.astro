@@ -8,7 +8,7 @@ import { getCollection } from 'astro:content';
 import Icon from '../../components/Icon.astro';
 import Base from '../../layouts/Base.astro';
 import { formatArea, formatPrecio, formatPrecioCorto, formatPrecioM2, nombreCorto, url } from '../../lib/format';
-import { tieneRecorrido } from '../../lib/lote';
+import { textoArea, textoPrecio, textoPrecioCorto, textoPrecioDetalle, tieneRecorrido } from '../../lib/lote';
 import { zonaDe } from '../../lib/zonas';
 
 const entradas = (await getCollection('lotes')).sort((a, b) => a.data.orden - b.data.orden);
@@ -56,15 +56,15 @@ const lotes = await Promise.all(
           municipio: d.municipio,
           departamento: d.departamento,
           vereda: d.vereda,
-          areaTxt: formatArea(d.area_m2),
+          areaTxt: textoArea(d),
           zona: zonaDe(d.municipio),
           lat: medio?.lat ?? d.mapa?.lat ?? d.coordenadas!.lat,
           lng: medio?.lng ?? d.mapa?.lon ?? d.coordenadas!.lon,
           alt: d.mapa?.alt ?? 0,
           camara: d.mapa?.camara,
           area: d.area_m2,
-          precio: d.precio_cop,
-          precioCorto: formatPrecioCorto(d.precio_cop),
+          precio: d.precio_cop ?? 0,
+          precioCorto: textoPrecioCorto(d),
           estado: d.estado,
           demo: d.demo,
           recorrido: tieneRecorrido(d),
@@ -210,8 +210,8 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
                           <span>{l.d.demo ? `${l.d.municipio}, demo` : l.d.municipio}</span>
                         </span>
                         <span class="item-num">
-                          <strong>{formatPrecioCorto(l.d.precio_cop)}</strong>
-                          <span>{formatArea(l.d.area_m2)}</span>
+                          <strong>{textoPrecioCorto(l.d)}</strong>
+                          <span>{textoArea(l.d)}</span>
                         </span>
                       </button>
                     </li>
@@ -253,14 +253,14 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
               <p class="tagline">{l.d.tagline}</p>
 
               <div class="precio">
-                <strong>{formatPrecio(l.d.precio_cop)}</strong>
-                <span>{formatPrecioM2(l.d.precio_cop, l.d.area_m2)}</span>
+                <strong>{textoPrecio(l.d)}</strong>
+                <span>{textoPrecioDetalle(l.d)}</span>
               </div>
 
               <dl class="cifras">
                 <div>
-                  <dt>Área</dt>
-                  <dd>{formatArea(l.d.area_m2)}</dd>
+                  <dt>{l.d.area_max_m2 ? 'Por lote' : 'Área'}</dt>
+                  <dd>{textoArea(l.d)}</dd>
                 </div>
                 {l.d.explanacion_m2 && (
                   <div>
@@ -791,9 +791,8 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
     font-weight: 600;
   }
   .item-txt strong {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    line-height: 1.25;
+    text-wrap: balance;
   }
   .item-txt span,
   .item-num span {
