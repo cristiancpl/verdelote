@@ -147,10 +147,18 @@ const ldJson = (node: object) => JSON.stringify(node).replace(/</g, '\\u003c');
           const c = document.getElementById('contacto');
           if (!c || !c.offsetParent) return false;
           c.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
-          c.classList.remove('pulso');
-          void c.offsetWidth;
           c.classList.add('pulso');
           c.focus({ preventScroll: true });
+          // Sigue palpitando mientras se vea; se apaga cuando la persona sale de esa zona
+          let visto = false;
+          const obs = new IntersectionObserver(([e]) => {
+            if (e.isIntersecting) visto = true;
+            else if (visto) {
+              c.classList.remove('pulso');
+              obs.disconnect();
+            }
+          });
+          obs.observe(c);
           return true;
         };
         document.querySelectorAll('[data-ir-contacto]').forEach((a) =>
@@ -258,9 +266,9 @@ const ldJson = (node: object) => JSON.stringify(node).replace(/</g, '\\u003c');
     font-size: 1.125rem;
     font-weight: 600;
   }
-  /* Resalte al llegar desde "Contacto": dos pulsos de brillo dorado */
+  /* Resalte al llegar desde "Contacto": brillo dorado que palpita hasta salir de la zona */
   .contacto.pulso {
-    animation: pulso-contacto 1.1s var(--ease) 2;
+    animation: pulso-contacto 1.4s var(--ease) infinite;
   }
   @keyframes pulso-contacto {
     0% {
