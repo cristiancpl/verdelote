@@ -59,6 +59,8 @@ const UMBRAL_LOTES = 450_000;
 const UMBRAL_NOMBRE_REGION = 120_000;
 const UMBRAL_MUNICIPIOS = 160_000;
 const UMBRAL_PAIS = 900_000;
+// Municipio al que vuela "Explorar lotes" desde la llegada
+const MUNICIPIO_ENTRADA = 'Guarne';
 // Lotes a menos de 1,5 km entre sí comparten un pin (con el número) hasta que la cámara baja de 25 km
 const VECINOS_M = 1_500;
 const UMBRAL_VECINOS = 25_000;
@@ -422,7 +424,7 @@ export async function iniciarGlobo() {
       sizePreserved: true,
       title: `Ver los lotes en ${r.nombre}`,
     });
-    m.addEventListener('gmp-click', () => irAntioquia());
+    m.addEventListener('gmp-click', () => explorar());
     marcadoresRegion.set(r.nombre, m);
   }
 
@@ -717,7 +719,10 @@ export async function iniciarGlobo() {
     programarCapas();
   };
 
-  $('[data-explorar]').addEventListener('click', () => irAntioquia());
+  // Explorar lleva directo a los lotes de Guarne (zona de entrada del demo); si no hay, a Antioquia
+  const zonaEntrada = cfg.lotes.find((l) => l.municipio === MUNICIPIO_ENTRADA)?.zona.id;
+  const explorar = () => (zonaEntrada ? irZona(zonaEntrada, 6000) : irAntioquia());
+  $('[data-explorar]').addEventListener('click', explorar);
   $('[data-ir-antioquia]').addEventListener('click', () => irAntioquia(2500));
   $$('[data-ir-zona]').forEach((b) => b.addEventListener('click', () => irZona(b.dataset.irZona!)));
   $$('[data-abrir]').forEach((b) => b.addEventListener('click', () => irLote(b.dataset.abrir!)));
