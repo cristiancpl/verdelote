@@ -1,11 +1,12 @@
 ---
+import type { ImageMetadata } from 'astro';
 import { getImage, Image } from 'astro:assets';
 import { getCollection, type CollectionEntry } from 'astro:content';
 import Icon, { type IconName } from '../../components/Icon.astro';
 import PauseButton from '../../components/PauseButton.astro';
 import Base from '../../layouts/Base.astro';
 import { absoluteUrl, formatArea, formatPrecio, formatPrecioM2, formatTelefono, nombreCorto, url } from '../../lib/format';
-import { primerClip, textoArea, textoPrecio, textoPrecioDetalle } from '../../lib/lote';
+import { primerClip, textoArea, textoPrecio, textoPrecioCorto, textoPrecioDetalle } from '../../lib/lote';
 
 export async function getStaticPaths() {
   const lotes = await getCollection('lotes');
@@ -26,9 +27,49 @@ const whatsappUrl = d.contacto
     )}`
   : undefined;
 
+// Mensaje genérico (sin lote elegido) y base del enlace; el selector agrega el lote elegido por JS
+const waBase = d.contacto ? `https://wa.me/${d.contacto.whatsapp}?text=` : undefined;
+const waGenerico =
+  d.contacto && waBase
+    ? waBase +
+      encodeURIComponent(`Hola ${d.contacto.nombre}, vi ${d.nombre} en AM Grupo Inmobiliario y quiero información`)
+    : undefined;
+const waPrefijo = d.contacto ? `Hola ${d.contacto.nombre}, vi ${d.nombre} en AM Grupo Inmobiliario y quiero información del ` : '';
+
+// Fotos pequeñas o verticales no se estiran a pantalla completa: van en un marco con su proporción natural
+const esGrande = (m: ImageMetadata) => m.width >= 1400 && m.width >= m.height;
+const esVertical = (m: ImageMetadata) => m.height > m.width;
+
+const iaNota = 'Movimiento generado con IA a partir de una foto real';
+
+// Selector de lote
+const unidades = d.unidades;
+const rangoPrecio = Boolean(d.precio_cop && d.precio_max_cop);
+const subtituloSelector = d.contacto
+  ? rangoPrecio
+    ? `Precios ${textoPrecioCorto(d).replace(/^D/, 'd')}. El precio de cada lote se consulta con ${d.contacto.nombre}.`
+    : `El precio de cada lote se consulta con ${d.contacto.nombre}.`
+  : '';
+const spanUnidad = (i: number) => {
+  const porFila = unidades.length === 4 ? 2 : 3;
+  const resto = Math.min(porFila, unidades.length - Math.floor(i / porFila) * porFila);
+  return 6 / (resto >= porFila ? porFila : resto);
+};
+
 // Portada: video de un capítulo (o del recorrido) si existe; si no, la foto de portada; si no, un fondo sobrio
-const clip = primerClip(d);
-const heroPoster = clip ? (await getImage({ src: clip.poster, width: 1920, format: 'webp' })).src : undefined;
+const clip = primerClip(d, true);
+const heroPoster = clip
+  ? (await getImage({ src: clip.poster, width: Math.min(clip.poster.width, 1920), format: 'webp' })).src
+  : undefined;
+
+// La portada va a pantalla completa solo si es grande y horizontal (foto o poster del video); si no, enmarcada
+const heroFoto = !clip ? d.portada : undefined;
+const heroEnmarcado = Boolean(clip ? !esGrande(clip.poster) : heroFoto && !esGrande(heroFoto));
+const heroPar =
+  heroFoto && heroEnmarcado && esVertical(heroFoto)
+    ? d.galeria.find((g) => g.src.src !== heroFoto.src && esVertical(g.src) && !/plano|mapa/i.test(`${g.alt} ${g.src.src}`))?.src
+    : undefined;
+const heroMarcos = heroFoto && heroEnmarcado ? [heroFoto, ...(heroPar ? [heroPar] : [])] : [];
 
 // Reproductor a pantalla completa: recorrido completo y vuelo comparten el mismo diálogo
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
@@ -55,9 +96,13 @@ const playDetalle = d.video_completo
     ? `Del planeta al lote · ${mmss(d.vuelo.duracion_s)}`
     : '';
 
-// Recorrido por scroll
+// Recorrido por scroll. Un video con poster pequeño o vertical va siempre enmarcado junto al texto. Si hay un video
+// grande y horizontal el recorrido es cinematográfico y las fotos siguen a pantalla completa; si no, las fotos
+// pequeñas o verticales también van enmarcadas
+const historiaCinema = d.historia.some((h) => h.video && esGrande(h.media));
+const historiaMarco = d.historia.map((h) => (h.video ? !esGrande(h.media) : !historiaCinema && !esGrande(h.media)));
 const historiaPosters = await Promise.all(
-  d.historia.map(async (h) => (h.video ? (await getImage({ src: h.media, width: 1920, format: 'webp' })).src : undefined)),
+  d.historia.map(async (h) => (h.video ? (await getImage({ src: h.media, width: Math.min(h.media.width, 1920), format: 'webp' })).src : undefined)),
 );
 
 const cifras = d.cifras ?? [
@@ -230,9 +275,9 @@ const fichaLd = {
   </div>
 
   <!-- Portada -->
-  <section class="stage hero no-print" id="hero" aria-label="Portada del lote">
+  <section class:list={['stage', 'hero', 'no-print', { framed: heroEnmarcado }]} id="hero" aria-label="Portada del lote">
     {
-      clip && heroPoster ? (
+      heroEnmarcado ? null : clip && heroPoster ? (
         <video
           id="hero-video"
           src={url(clip.src)}
@@ -243,14 +288,14 @@ const fichaLd = {
           playsinline
           aria-hidden="true"
         />
-      ) : d.portada ? (
-        <Image class="bg" src={d.portada} alt="" widths={[1000, 1600, 2200]} sizes="100vw" loading="eager" />
+      ) : heroFoto ? (
+        <Image class="bg" src={heroFoto} alt="" widths={[1000, 1600, 2200]} sizes="100vw" loading="eager" />
       ) : (
         <div class="bg bg-sobrio"></div>
       )
     }
     {
-      clip && (
+      clip && !heroEnmarcado && (
         <div class="ctl">
           <PauseButton videoId="hero-video" />
         </div>
@@ -263,7 +308,53 @@ const fichaLd = {
           <span class="kicker"><Icon name="map-pin" />{kicker}</span>
           <h1>{nombreCorto(d.nombre)}</h1>
           <p>{d.tagline}</p>
+          {
+            unidades.length > 0 && (
+              <a class="btn btn-glass hero-pick" href="#elige-tu-lote">
+                Elegir uno de los {unidades.length} lotes
+                <Icon name="arrow-right" />
+              </a>
+            )
+          }
         </div>
+        {
+          heroEnmarcado && clip && heroPoster && (
+            <div class="hf-media">
+              <figure class="frame" style={`--w:${clip.poster.width};--h:${clip.poster.height}`}>
+                <video
+                  id="hero-video"
+                  src={url(clip.src)}
+                  poster={heroPoster}
+                  autoplay
+                  muted
+                  loop
+                  playsinline
+                  aria-hidden="true"
+                />
+                <PauseButton videoId="hero-video" />
+              </figure>
+              {clip.ia && <p class="ia-note">{iaNota}</p>}
+            </div>
+          )
+        }
+        {
+          heroEnmarcado && !clip && (
+            <div class:list={['hf-media', { par: heroMarcos.length > 1 }]}>
+              {heroMarcos.map((m) => (
+                <figure class="frame" style={`--w:${m.width};--h:${m.height}`}>
+                  <Image
+                    src={m}
+                    alt={m === heroFoto ? d.nombre : ''}
+                    widths={[Math.min(m.width, 640), m.width]}
+                    sizes={heroMarcos.length > 1 ? '(max-width: 900px) 45vw, 400px' : '(max-width: 900px) 92vw, 760px'}
+                    loading="eager"
+                    fetchpriority={m === heroFoto ? 'high' : 'auto'}
+                  />
+                </figure>
+              ))}
+            </div>
+          )
+        }
         <div class:list={['dock', { solo: !playKey }]}>
           {
             playKey && (
@@ -302,9 +393,69 @@ const fichaLd = {
             )
           }
         </div>
+        {clip?.ia && !heroEnmarcado && <p class="ia-note on-dock">{iaNota}</p>}
       </div>
     </div>
   </section>
+
+  <!-- Selector de lote -->
+  {
+    unidades.length > 0 && (
+      <section
+        class="band sel no-print"
+        id="elige-tu-lote"
+        aria-labelledby="sel-titulo"
+        data-selector
+        data-prefijo={waPrefijo}
+        data-generico={waGenerico}
+        data-base={waBase}
+      >
+        <div class="wrap">
+          <h2 class="h-lg reveal" id="sel-titulo">Elige tu lote</h2>
+          {subtituloSelector && <p class="sel-sub reveal">{subtituloSelector}</p>}
+          <div class="sel-grid reveal" role="radiogroup" aria-labelledby="sel-titulo" style={`--n:${unidades.length}`}>
+            {unidades.map((u, i) => {
+              const libre = u.estado === 'disponible';
+              return (
+                <label class:list={['unit', { off: !libre }]} style={`--sp:${spanUnidad(i)}`}>
+                  <input
+                    type="radio"
+                    name="lote"
+                    value={u.nombre}
+                    data-area={formatArea(u.area_m2)}
+                    disabled={!libre}
+                  />
+                  <span class="u-name">{u.nombre}</span>
+                  <span class="u-area">{formatArea(u.area_m2)}</span>
+                  <span class="u-price">{u.precio_cop ? formatPrecio(u.precio_cop) : 'Precio a consultar'}</span>
+                  {!libre && <em class="u-state">{u.estado}</em>}
+                </label>
+              );
+            })}
+          </div>
+          <div class="sel-bar reveal">
+            <div class="sel-info">
+              <p class="sel-state" data-sel-state aria-live="polite">
+                Aún no has elegido un lote
+              </p>
+              <button type="button" class="sel-clear" data-sel-clear hidden>
+                Quitar selección
+              </button>
+            </div>
+            {
+              waGenerico && (
+                <a class="btn btn-primary" href={waGenerico} target="_blank" rel="noopener" data-sel-cta>
+                  <Icon name="whatsapp" />
+                  <span data-sel-label>Consultar por WhatsApp</span>
+                </a>
+              )
+            }
+          </div>
+          <p class="sel-note">Elegir no reserva el lote. Las fotos muestran la parcelación, no una unidad específica.</p>
+        </div>
+      </section>
+    )
+  }
 
   <!-- Frase de apertura -->
   {
@@ -326,7 +477,13 @@ const fichaLd = {
       <section class="story no-print" aria-label="Recorrido por el lote" data-story>
         <div class="story-media" aria-hidden="true">
           {d.historia.map((h, i) =>
-            h.video ? (
+            h.video && historiaMarco[i] ? (
+              <div class:list={['layer', 'frame-layer', { on: i === 0 }]} data-m={i}>
+                <figure class="frame" style={`--w:${h.media.width};--h:${h.media.height}`}>
+                  <video src={url(h.video)} poster={historiaPosters[i]} muted loop playsinline preload="none" />
+                </figure>
+              </div>
+            ) : h.video ? (
               <video
                 class:list={['layer', { on: i === 0 }]}
                 data-m={i}
@@ -337,6 +494,17 @@ const fichaLd = {
                 playsinline
                 preload="none"
               />
+            ) : historiaMarco[i] ? (
+              <div class:list={['layer', 'frame-layer', { on: i === 0 }]} data-m={i}>
+                <figure class="frame" style={`--w:${h.media.width};--h:${h.media.height}`}>
+                  <Image
+                    src={h.media}
+                    alt=""
+                    widths={[Math.min(h.media.width, 640), h.media.width]}
+                    sizes="(max-width: 900px) 92vw, 760px"
+                  />
+                </figure>
+              </div>
             ) : (
               <Image
                 class:list={['layer', { on: i === 0 }]}
@@ -354,7 +522,7 @@ const fichaLd = {
         </div>
         <div class="story-steps wrap">
           {d.historia.map((h, i) => (
-            <article class="step" data-s={i}>
+            <article class="step" data-s={i} data-frame={historiaMarco[i] ? '' : undefined}>
               <div class="card-media">
                 <Image src={h.media} alt="" widths={[500, 900]} sizes="(max-width: 700px) 100vw, 1px" />
               </div>
@@ -362,6 +530,7 @@ const fichaLd = {
                 <span class="n">{h.etiqueta}</span>
                 <h3>{h.titulo}</h3>
                 <p>{h.texto}</p>
+                {h.video && h.ia && <small class="ia-note">{iaNota}</small>}
               </div>
             </article>
           ))}
@@ -385,21 +554,6 @@ const fichaLd = {
           ))
         }
       </div>
-
-      {
-        d.unidades.length > 0 && (
-          <ul class="unidades reveal" aria-label="Lotes de la parcelación">
-            {d.unidades.map((u) => (
-              <li class:list={{ off: u.estado !== 'disponible' }}>
-                <strong>{u.nombre}</strong>
-                <span>{formatArea(u.area_m2)}</span>
-                {u.precio_cop && <span>{formatPrecio(u.precio_cop)}</span>}
-                {u.estado !== 'disponible' && <em>{u.estado}</em>}
-              </li>
-            ))}
-          </ul>
-        )
-      }
 
       {
         (celdas.length > 0 || grupos.length > 0) && (
@@ -732,7 +886,7 @@ const fichaLd = {
     const sincronizar = (visible = true) => {
       capas.forEach((c, n) => {
         c.classList.toggle('on', n === activo);
-        const v = c instanceof HTMLVideoElement ? c : undefined;
+        const v = c instanceof HTMLVideoElement ? c : (c.querySelector('video') ?? undefined);
         if (!v) return;
         if (n === activo && visible && !reduce && !apilado.matches) v.play().catch(() => undefined);
         else v.pause();
@@ -750,6 +904,32 @@ const fichaLd = {
     );
     story.querySelectorAll('.step').forEach((s) => pasos.observe(s));
     new IntersectionObserver(([e]) => sincronizar(e.isIntersecting), { threshold: 0 }).observe(story);
+  }
+
+  // Selector de lote: la tarjeta elegida arma el mensaje de WhatsApp con su nombre y área
+  const sel = document.querySelector<HTMLElement>('[data-selector]');
+  if (sel) {
+    const radios = [...sel.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
+    const estado = sel.querySelector<HTMLElement>('[data-sel-state]')!;
+    const cta = sel.querySelector<HTMLAnchorElement>('[data-sel-cta]');
+    const etiqueta = sel.querySelector<HTMLElement>('[data-sel-label]');
+    const limpiar = sel.querySelector<HTMLButtonElement>('[data-sel-clear]')!;
+    const { prefijo = '', generico = '', base = '' } = sel.dataset;
+    const aplicar = () => {
+      const r = radios.find((x) => x.checked);
+      estado.classList.toggle('on', Boolean(r));
+      limpiar.hidden = !r;
+      estado.textContent = r ? `Seleccionado: ${r.value} · ${r.dataset.area}` : 'Aún no has elegido un lote';
+      if (etiqueta) etiqueta.textContent = r ? `Consultar ${r.value} por WhatsApp` : 'Consultar por WhatsApp';
+      if (cta) cta.href = r ? base + encodeURIComponent(`${prefijo}${r.value} (${r.dataset.area})`) : generico;
+    };
+    radios.forEach((r) => r.addEventListener('change', aplicar));
+    limpiar.addEventListener('click', () => {
+      radios.forEach((r) => (r.checked = false));
+      aplicar();
+      radios.find((r) => !r.disabled)?.focus();
+    });
+    aplicar();
   }
 
   // Reproductor a pantalla completa (recorrido completo y vuelo): Esc o el botón lo cierran y pausan
@@ -825,41 +1005,251 @@ const fichaLd = {
 </script>
 
 <style>
-  /* Lotes de una parcelación: una fila de piezas iguales bajo las cifras */
-  .unidades {
-    list-style: none;
-    margin: 28px 0 0;
-    padding: 0;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-    gap: 12px;
+  /* Selector de lote: tarjetas con semántica de radio (flechas del teclado incluidas) */
+  .sel {
+    padding-top: 88px;
+    padding-bottom: 0;
   }
-  .unidades li {
+  .sel-sub {
+    max-width: 52ch;
+    margin-top: 18px;
+    color: var(--muted);
+    font-size: clamp(1.0625rem, 1.5vw, 1.25rem);
+    line-height: 1.45;
+  }
+  .sel-grid {
     display: grid;
-    gap: 4px;
-    padding: 18px 20px;
+    grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+    gap: 16px;
+    margin-top: 44px;
+  }
+  .unit {
+    position: relative;
+    display: grid;
+    gap: 6px;
+    align-content: start;
+    min-height: 44px;
+    padding: 24px 22px 22px;
+    border: 1.5px solid rgb(255 255 255 / 0.08);
     border-radius: var(--radius);
     background: var(--card);
+    cursor: pointer;
+    transition: border-color 0.25s, background 0.25s, transform 0.3s var(--ease);
   }
-  .unidades strong {
-    font-size: 0.875rem;
-    font-weight: 500;
+  .unit:hover:not(.off) {
+    border-color: rgb(183 143 84 / 0.55);
+    transform: translateY(-2px);
+  }
+  .unit input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: inherit;
+  }
+  .unit:has(input:checked) {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+    background: color-mix(in srgb, var(--accent) 11%, var(--card));
+  }
+  .unit:has(input:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+  }
+  .unit::after {
+    content: '';
+    position: absolute;
+    top: 22px;
+    right: 20px;
+    width: 20px;
+    height: 20px;
+    border: 1.5px solid rgb(255 255 255 / 0.32);
+    border-radius: 99px;
+    transition: border-color 0.25s, background 0.25s;
+  }
+  .unit:has(input:checked)::after {
+    border-color: var(--accent);
+    background: radial-gradient(circle, var(--accent) 0 5px, transparent 6px);
+  }
+  .unit.off {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .unit.off::after {
+    display: none;
+  }
+  .u-name {
     color: var(--accent);
+    font-size: 0.9375rem;
+    font-weight: 500;
   }
-  .unidades span {
-    font-size: 1.375rem;
+  .u-area {
+    margin-top: 6px;
+    font-size: clamp(1.75rem, 2.4vw, 2.25rem);
     font-weight: 600;
-    letter-spacing: -0.02em;
+    line-height: 1.05;
+    letter-spacing: -0.04em;
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
-  .unidades em {
+  .u-price {
+    color: var(--muted);
+    font-size: 0.9375rem;
+  }
+  .u-state {
     font-style: normal;
-    font-size: 0.8125rem;
+    font-size: 0.875rem;
     color: var(--muted);
     text-transform: capitalize;
   }
-  .unidades li.off {
-    opacity: 0.55;
+  .sel-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px 28px;
+    margin-top: 28px;
+    padding-top: 28px;
+    border-top: 1px solid var(--line);
+  }
+  .sel-info {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 20px;
+    min-width: 0;
+  }
+  .sel-state {
+    color: var(--muted);
+    font-size: 1.25rem;
+    font-weight: 500;
+    letter-spacing: -0.015em;
+  }
+  .sel-state.on {
+    color: var(--text);
+  }
+  .sel-clear {
+    min-height: 44px;
+    padding: 0 4px;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.9375rem;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+  .sel-clear:hover {
+    color: var(--text);
+  }
+  .sel-clear[hidden] {
+    display: none;
+  }
+  .sel-note {
+    margin-top: 18px;
+    max-width: 60ch;
+    color: var(--muted);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+  }
+
+  /* Marco: foto o video pequeño o vertical a su proporción natural, sin estirar (hasta 1.25x del original) */
+  .frame {
+    --maxh: 62dvh;
+    position: relative;
+    margin: 0;
+    width: min(100%, calc(var(--w) * 1.25px), 1100px, calc(var(--maxh) * var(--w) / var(--h)));
+    aspect-ratio: var(--w) / var(--h);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--card);
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08), 0 36px 90px -36px rgb(0 0 0 / 0.9);
+  }
+  .frame :global(img),
+  .frame video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .ia-note {
+    display: block;
+    margin-top: 12px;
+    color: var(--muted);
+    font-size: 0.8125rem;
+    line-height: 1.4;
+  }
+  .ia-note.on-dock {
+    margin-top: 14px;
+    padding-left: 24px;
+    color: rgb(255 255 255 / 0.7);
+  }
+
+  /* Portada enmarcada: escena oscura con el texto a un lado y la foto a su proporción */
+  .stage.framed {
+    height: auto;
+    min-height: 100dvh;
+    background:
+      radial-gradient(80% 70% at 82% 8%, rgb(183 143 84 / 0.13), transparent 60%),
+      var(--bg);
+  }
+  .stage.framed::after {
+    display: none;
+  }
+  .stage.framed .stage-ui {
+    position: relative;
+    inset: auto;
+    min-height: 100dvh;
+    justify-content: center;
+    padding-top: calc(var(--nav-h) + 24px);
+    padding-bottom: 48px;
+  }
+  .stage.framed .stage-ui > .wrap {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    grid-template-areas:
+      'title media'
+      'dock dock';
+    column-gap: 56px;
+    row-gap: 40px;
+    align-items: center;
+  }
+  .stage.framed .hero-title {
+    grid-area: title;
+    padding-bottom: 0;
+  }
+  .stage.framed .hero-title h1 {
+    font-size: clamp(2.6rem, 5.2vw, 5rem);
+  }
+  .stage.framed .dock {
+    grid-area: dock;
+  }
+  .hf-media {
+    grid-area: media;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  .hf-media.par {
+    flex-direction: row;
+    justify-content: flex-end;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .hf-media.par .frame {
+    --maxh: min(56dvh, 540px);
+    width: min(calc(50% - 8px), calc(var(--maxh) * var(--w) / var(--h)));
+  }
+  .hf-media.par .frame:nth-child(2) {
+    margin-top: 48px;
+  }
+  .hero-pick {
+    margin-top: 26px;
+  }
+  .hero-pick :global(.icon) {
+    transform: rotate(90deg);
   }
 
   /* Las anclas y el foco con teclado no quedan bajo la barra fija; sin scroll de fondo con un diálogo abierto */
@@ -1157,6 +1547,27 @@ const fichaLd = {
   .dots span.on {
     height: 28px;
     background: #fff;
+  }
+
+  /* Capítulo enmarcado: la foto o el video va junto al texto, a su proporción */
+  .frame-layer {
+    display: grid;
+    grid-template-columns: minmax(0, 440px) minmax(0, 1fr);
+    align-items: center;
+    column-gap: 72px;
+    padding-inline: max(var(--gutter), calc((100% - var(--max)) / 2 + var(--gutter)));
+    background:
+      radial-gradient(70% 60% at 76% 40%, rgb(183 143 84 / 0.1), transparent 65%),
+      var(--bg);
+  }
+  .story-media :global(.frame-layer) {
+    transform: none;
+    transition: opacity 1s var(--ease);
+  }
+  .frame-layer .frame {
+    --maxh: 74dvh;
+    grid-column: 2;
+    justify-self: end;
   }
 
   /* Cifras */
@@ -1628,6 +2039,24 @@ const fichaLd = {
   }
 
   @media (max-width: 1100px) {
+    .sel-grid {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+    .unit {
+      grid-column: span var(--sp);
+    }
+    .stage.framed .stage-ui > .wrap {
+      column-gap: 40px;
+    }
+    .frame-layer {
+      column-gap: 40px;
+      grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+      padding-right: calc(var(--gutter) + 28px);
+    }
+    .step[data-frame] .txt {
+      max-width: 340px;
+    }
+
     .dock {
       flex-wrap: wrap;
       border-radius: 26px;
@@ -1646,6 +2075,46 @@ const fichaLd = {
     }
     .dots {
       right: 24px;
+    }
+  }
+
+  @media (max-width: 900px) {
+    .stage.framed .stage-ui > .wrap {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas:
+        'title'
+        'media'
+        'dock';
+      row-gap: 32px;
+    }
+    .stage.framed .hf-media {
+      align-items: center;
+    }
+    .stage.framed .hf-media.par {
+      justify-content: center;
+    }
+    .hero-title p {
+      max-width: 44ch;
+    }
+  }
+
+  @media (min-width: 701px) and (max-width: 900px) {
+    .frame-layer {
+      grid-template-columns: minmax(0, 1fr);
+      align-content: start;
+      padding: calc(var(--nav-h) + 28px) var(--gutter) 0;
+    }
+    .frame-layer .frame {
+      --maxh: 40dvh;
+      grid-column: 1;
+      justify-self: center;
+    }
+    .step[data-frame] {
+      align-items: flex-start;
+      padding-top: calc(var(--nav-h) + 28px + 40dvh + 36px);
+    }
+    .step[data-frame] .txt {
+      max-width: 560px;
     }
   }
 
@@ -1707,6 +2176,45 @@ const fichaLd = {
     }
     .price-dock span {
       display: inline;
+    }
+
+    .sel-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 32px;
+    }
+    .unit {
+      grid-column: auto;
+      padding: 20px 18px 18px;
+    }
+    .unit:last-child:nth-child(odd) {
+      grid-column: span 2;
+    }
+    .sel-bar {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .sel-bar .btn {
+      height: auto;
+      min-height: 46px;
+      padding: 10px 20px;
+      white-space: normal;
+      text-align: center;
+    }
+    .sel-state {
+      font-size: 1.0625rem;
+    }
+    .stage.framed .stage-ui {
+      padding-bottom: 28px;
+    }
+    .stage.framed .hero-title h1 {
+      font-size: clamp(2.6rem, 13.5vw, 3.4rem);
+    }
+    .hero-pick {
+      width: 100%;
+    }
+    .ia-note.on-dock {
+      padding-left: 4px;
     }
 
     .story-media {
