@@ -7,12 +7,15 @@ type Datos = CollectionEntry<'lotes'>['data'];
 export const tieneRecorrido = (d: Datos) =>
   Boolean(d.vuelo || d.video_completo) || d.recorrido.some((c) => c.video) || d.historia.some((h) => h.video);
 
-/** Primer video con su imagen de portada: historia primero, luego recorrido */
-export const primerClip = (d: Datos) => {
-  const h = d.historia.find((x) => x.video);
-  if (h) return { src: h.video!, poster: h.media };
+/** Primer video con su imagen de portada: historia primero, luego recorrido.
+ *  Con preferirGrande, un video horizontal con poster de 1400 px o más gana al primero (portada cinematográfica) */
+export const primerClip = (d: Datos, preferirGrande = false) => {
+  const conVideo = d.historia.filter((x) => x.video);
+  const h =
+    (preferirGrande && conVideo.find((x) => x.media.width >= 1400 && x.media.width >= x.media.height)) || conVideo[0];
+  if (h) return { src: h.video!, poster: h.media, ia: h.ia };
   const r = d.recorrido.find((x) => x.video);
-  return r ? { src: r.video!, poster: r.poster } : undefined;
+  return r ? { src: r.video!, poster: r.poster, ia: undefined as boolean | undefined } : undefined;
 };
 
 // Área y precio de un lote o de una parcelación con rango (area_max_m2, precio_max_cop)
