@@ -54,6 +54,9 @@ const lotes = await Promise.all(
           id: l.id,
           nombre: nombreCorto(d.nombre),
           municipio: d.municipio,
+          departamento: d.departamento,
+          vereda: d.vereda,
+          areaTxt: formatArea(d.area_m2),
           zona: zonaDe(d.municipio),
           lat: medio?.lat ?? d.mapa?.lat ?? d.coordenadas!.lat,
           lng: medio?.lng ?? d.mapa?.lon ?? d.coordenadas!.lon,
@@ -107,6 +110,11 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
   <div class="globo" data-globo data-vista="llegada">
     <div class="lienzo" data-lienzo role="region" aria-label="Globo 3D con los lotes de Verdelote"></div>
     {fondo && <img class="fondo" src={fondo.src} alt="" data-fondo hidden />}
+
+    <div class="etapa" data-etapa aria-live="polite">
+      <strong data-etapa-titulo></strong>
+      <span data-etapa-sub></span>
+    </div>
 
     <section class="llegada" data-llegada aria-labelledby="llegada-titulo">
       <h1 id="llegada-titulo">Tu próximo lote. <span>Visto desde el cielo.</span></h1>
@@ -462,6 +470,44 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
     z-index: 1;
     pointer-events: none;
     background: linear-gradient(180deg, rgb(11 12 13 / 0.6) 0%, rgb(11 12 13 / 0) 100%);
+  }
+
+  /* Títulos del vuelo al lote: centrados abajo, como en el video; la lista y la ficha esperan a que termine */
+  .etapa {
+    position: absolute;
+    left: 50%;
+    bottom: 104px;
+    z-index: 22;
+    display: grid;
+    justify-items: center;
+    gap: 6px;
+    width: min(92vw, 820px);
+    text-align: center;
+    pointer-events: none;
+    opacity: 0;
+    transform: translate(-50%, 10px);
+    transition: opacity 0.5s var(--ease), transform 0.6s var(--ease);
+    text-shadow: 0 2px 28px rgb(0 0 0 / 0.55);
+  }
+  .etapa.visible {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  .etapa strong {
+    font-size: clamp(2rem, 4.4vw, 3.5rem);
+    font-weight: 600;
+    line-height: 1.05;
+    letter-spacing: -0.04em;
+  }
+  .etapa span {
+    font-size: clamp(0.9375rem, 1.4vw, 1.125rem);
+    color: rgb(244 245 243 / 0.75);
+  }
+  [data-cine] .rail,
+  [data-cine] .ficha {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
   }
 
   /* Superficie flotante compartida por la lista y la ficha */
@@ -1048,6 +1094,7 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .etapa,
     .llegada,
     .rail,
     .ficha,

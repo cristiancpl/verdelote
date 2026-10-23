@@ -1,5 +1,5 @@
-// Globo de Verdelote: llegada con el planeta girando, vista Antioquia con zonas, vista zona con lotes,
-// vuelo al lote con ficha lateral y órbita. La lista y los filtros funcionan también sin el globo (respaldo).
+// Globo de Verdelote: llegada con el planeta girando, lotes visibles y clicables a cualquier distancia
+// (de lejos agrupados por región), vuelo cinemático al lote como el video publicado, ficha lateral y órbita. La lista y los filtros funcionan también sin el globo (respaldo).
 // API: https://developers.google.com/maps/documentation/javascript/3d-maps-overview
 import { iniciarDibujo, type LatLng } from './lindero';
 
@@ -7,6 +7,9 @@ interface LoteGlobo {
   id: string;
   nombre: string;
   municipio: string;
+  departamento: string;
+  vereda?: string;
+  areaTxt: string;
   zona: { id: string; nombre: string };
   lat: number;
   lng: number;
@@ -37,6 +40,7 @@ interface ConfigGlobo {
 }
 
 type Vista = 'llegada' | 'mapa' | 'zona' | 'lote';
+type Etapa = { umbral: number; titulo: string; sub: string };
 type Camara = { center: { lat: number; lng: number; altitude: number }; range: number; tilt: number; heading: number };
 
 declare global {
@@ -49,10 +53,19 @@ declare global {
 const VERDE = '#6cc17a';
 const TINTA = '#08130b';
 const AMBAR = '#e3b65c';
-// Distancias de cámara: lotes en lugar de zonas, nombre de región y zonas, nombre de país
-const UMBRAL_LOTES = 160_000;
-const UMBRAL_REGION = 3_000_000;
+// Distancias de cámara: lotes uno a uno (más lejos se agrupan por región), nombre de región, municipios y país
+const UMBRAL_LOTES = 450_000;
+const UMBRAL_NOMBRE_REGION = 120_000;
+const UMBRAL_MUNICIPIOS = 160_000;
 const UMBRAL_PAIS = 900_000;
+// Giro final del vuelo, como en el video: al final rota 35 grados hasta el rumbo de llegada
+const GIRO_FINAL = -35;
+
+const suave = (x: number) => {
+  const t = Math.min(Math.max(x, 0), 1);
+  return t * t * t * (t * (t * 6 - 15) + 10);
+};
+const giroCorto = (a: number) => ((((a + 180) % 360) + 360) % 360) - 180;
 
 const PLANETA: Camara = { center: { lat: 4.5, lng: -74, altitude: 0 }, range: 17_000_000, tilt: 0, heading: 0 };
 const ANTIOQUIA: Camara = { center: { lat: 6.3, lng: -75.47, altitude: 0 }, range: 230_000, tilt: 32, heading: 0 };
@@ -309,7 +322,9 @@ export async function iniciarGlobo() {
       lineas.forEach((l) => mapa.append(l));
       const mayor = anillos.reduce((a, b) => (b.length > a.length ? b : a));
       // La región se nombra un poco al norte de sus lotes, para que quede a la vista sobre las zonas
-      const lugar = t.tipo === 'pais' ? centroide(mayor) : { ...centroideLotes, lat: centroideLotes.lat + 0.5 };
+      // El país se nombra más al sur, para no chocar con el marcador de lotes que sube desde su región
+      const c = centroide(mayor);
+      const lugar = t.tipo === 'pais' ? { ...c, lat: c.lat - 4.5 } : { ...centroideLotes, lat: centroideLotes.lat + 0.5 };
       etiquetas.push({ m: etiqueta(t.nombre, lugar, t.tipo), tipo: t.tipo });
       programarCapas();
     });
@@ -351,6 +366,7 @@ export async function iniciarGlobo() {
       position: { lat: l.lat, lng: l.lng, altitude: 40 },
       altitudeMode: 'RELATIVE_TO_GROUND',
       extruded: true,
+      sizePreserved: true,
       label: l.precioCorto,
       title: `${l.nombre}, ${l.municipio}`,
     });
@@ -363,20 +379,23 @@ export async function iniciarGlobo() {
       m.replaceChildren(pin(colorLote(porId.get(id)!, id === abierto), undefined, id === abierto ? 1.25 : 1));
     });
 
-  const marcadoresZona = new Map<string, any>();
-  for (const z of zonas) {
-    const c = camaraGrupo(cfg.lotes.filter((l) => l.zona.id === z.id)).center;
+  // De lejos los lotes se agrupan en un marcador por región con el número de lotes; un clic baja a la región
+  const marcadoresRegion = new Map<string, any>();
+  for (const r of cfg.territorios.filter((t) => t.tipo === 'region')) {
+    const lotesRegion = cfg.lotes.filter((l) => l.departamento === r.nombre);
+    if (!lotesRegion.length) continue;
+    const c = centroide(lotesRegion);
     const m = new MarcadorClic({
       position: { lat: c.lat, lng: c.lng, altitude: 0 },
       altitudeMode: 'CLAMP_TO_GROUND',
-      label: z.nombre,
-      title: `Ver lotes en ${z.nombre}`,
+      sizePreserved: true,
+      title: `Ver los lotes en ${r.nombre}`,
     });
-    m.addEventListener('gmp-click', () => irZona(z.id));
-    marcadoresZona.set(z.id, m);
+    m.addEventListener('gmp-click', () => irAntioquia());
+    marcadoresRegion.set(r.nombre, m);
   }
 
-  // Qué se ve según la distancia: país de lejos, región y zonas en medio, municipios y lotes de cerca
+  // Qué se ve según la distancia: lotes siempre (uno a uno de cerca, agrupados de lejos), nombres y municipios
   let dibujando = false;
   const mostrar = (m: any, si: boolean) => {
     if (si && !m.isConnected) mapa.append(m);
@@ -385,18 +404,18 @@ export async function iniciarGlobo() {
   const actualizarCapas = () => {
     const rango = mapa.range ?? PLANETA.range;
     const cerca = rango <= UMBRAL_LOTES;
-    for (const z of zonas) {
-      const n = cfg.lotes.filter((l) => l.zona.id === z.id && pasa.has(l.id)).length;
-      const m = marcadoresZona.get(z.id);
+    marcadoresRegion.forEach((m, region) => {
+      const n = cfg.lotes.filter((l) => l.departamento === region && pasa.has(l.id)).length;
       if (m.dataset.n !== String(n)) {
         m.dataset.n = String(n);
         m.replaceChildren(pin(VERDE, String(n), 1.3));
       }
-      mostrar(m, vista !== 'llegada' && !cerca && n > 0 && rango < UMBRAL_REGION);
-    }
+      mostrar(m, !cerca && n > 0);
+    });
     marcadoresLote.forEach((m, id) => mostrar(m, !dibujando && cerca && (pasa.has(id) || id === abierto)));
-    for (const e of etiquetas) mostrar(e.m, e.tipo === 'pais' ? rango > UMBRAL_PAIS : rango < UMBRAL_REGION && !cerca);
-    municipios.forEach((l) => mostrar(l, cerca));
+    for (const e of etiquetas)
+      mostrar(e.m, e.tipo === 'pais' ? rango > UMBRAL_PAIS : rango > UMBRAL_NOMBRE_REGION && rango <= UMBRAL_LOTES);
+    municipios.forEach((l) => mostrar(l, rango <= UMBRAL_MUNICIPIOS));
   };
   let pendiente = false;
   const programarCapas = () => {
@@ -411,9 +430,11 @@ export async function iniciarGlobo() {
   alFiltrar = programarCapas;
 
   // Cámara
-  let animacion: 'ninguna' | 'vuelo' | 'llegada-lote' | 'orbita' = 'ninguna';
+  let animacion: 'ninguna' | 'vuelo' | 'llegada-lote' | 'orbita' | 'cine' = 'ninguna';
+  let cine = 0;
   const marcarOrbita = (si: boolean) => $$('[data-orbitar]').forEach((b) => b.setAttribute('aria-pressed', String(si)));
   const detener = () => {
+    if (cine) terminarCine(false);
     mapa.stopCameraAnimation?.();
     if (animacion === 'orbita') marcarOrbita(false);
     animacion = 'ninguna';
@@ -450,9 +471,96 @@ export async function iniciarGlobo() {
     animacion = 'ninguna';
     if (fue === 'orbita') marcarOrbita(false);
     // Al llegar al lote, la cámara empieza a girar despacio alrededor del lindero
-    if (fue === 'llegada-lote' && vista === 'lote' && !dibujando && !angosto.matches) orbitar();
+    if (fue === 'llegada-lote') alLlegar();
   });
   $$('[data-orbitar]').forEach((b) => b.addEventListener('click', () => (animacion === 'orbita' ? detener() : orbitar())));
+
+  // Títulos por etapa durante el vuelo (país, región, municipio, vereda, lote), como en el video
+  const caja = $('[data-etapa]');
+  const tituloEtapa = $('[data-etapa-titulo]');
+  const subEtapa = $('[data-etapa-sub]');
+  let cambioEtapa = 0;
+  const mostrarEtapa = (e?: Etapa) => {
+    caja.classList.remove('visible');
+    window.clearTimeout(cambioEtapa);
+    if (!e) return;
+    cambioEtapa = window.setTimeout(() => {
+      tituloEtapa.textContent = e.titulo;
+      subEtapa.textContent = e.sub;
+      caja.classList.add('visible');
+    }, 220);
+  };
+  const etapas = (l: LoteGlobo): Etapa[] => [
+    { umbral: 3_000_000, titulo: 'Colombia', sub: 'Sudamérica' },
+    { umbral: 300_000, titulo: l.departamento, sub: 'Colombia' },
+    { umbral: 30_000, titulo: l.municipio, sub: l.zona.nombre },
+    ...(l.vereda ? [{ umbral: 4_000, titulo: l.vereda, sub: l.municipio }] : []),
+    { umbral: 1_100, titulo: l.nombre, sub: `${l.areaTxt}, ${l.precioCorto}` },
+  ];
+
+  // Vuelo cinemático: la cámara mira siempre al lote; distancia logarítmica, inclinación que crece al acercarse
+  // y giro final (la misma curva de prep/vuelo/ges/generar_esp_directo.py). Tocar el globo lo interrumpe
+  let alLlegar = () => {};
+  let ocultarEtapa = 0;
+  // Al llegar, el nombre del lote queda solo un momento; luego entran la lista y la ficha
+  const mostrarPaneles = () => {
+    window.clearTimeout(ocultarEtapa);
+    mostrarEtapa();
+    delete raiz.dataset.cine;
+  };
+  const terminarCine = (llego: boolean) => {
+    cancelAnimationFrame(cine);
+    cine = 0;
+    animacion = 'ninguna';
+    programarCapas();
+    if (!llego) return mostrarPaneles();
+    ocultarEtapa = window.setTimeout(mostrarPaneles, 2400);
+    alLlegar();
+  };
+  const vueloCine = (fin: Camara, l: LoteGlobo, llegada: () => void) => {
+    detener();
+    const r0 = Math.max(mapa.range ?? PLANETA.range, fin.range);
+    const razon = Math.log(r0 / fin.range);
+    alLlegar = llegada;
+    if (reducido || razon < 0.8) {
+      volar(fin, 2500, 'llegada-lote');
+      return;
+    }
+    // LatLngAltitude expone lat/lng como getters: se copian a mano (el spread los pierde)
+    const actual = mapa.center ?? PLANETA.center;
+    const c0 = { lat: actual.lat, lng: actual.lng, altitude: actual.altitude ?? 0 };
+    const t0 = mapa.tilt ?? 0;
+    const h0 = mapa.heading ?? 0;
+    const dLng = giroCorto(fin.center.lng - c0.lng);
+    const dRumbo = giroCorto(fin.heading - GIRO_FINAL - h0);
+    const duracion = Math.min(15_000, Math.max(2_800, razon * 1_350));
+    const lista = etapas(l).filter((e) => e.umbral < r0 * 0.8);
+    let siguiente = 0;
+    const inicio = performance.now();
+    animacion = 'cine';
+    window.clearTimeout(ocultarEtapa);
+    raiz.dataset.cine = '';
+    const paso = (ahora: number) => {
+      const x = Math.min(1, (ahora - inicio) / duracion);
+      const p = 0.55 * suave(x) + 0.45 * x;
+      const range = Math.exp(Math.log(r0) + (Math.log(fin.range) - Math.log(r0)) * p);
+      const pc = suave(x / 0.5);
+      Object.assign(mapa, {
+        center: {
+          lat: c0.lat + (fin.center.lat - c0.lat) * pc,
+          lng: c0.lng + dLng * pc,
+          altitude: (c0.altitude ?? 0) + (fin.center.altitude - (c0.altitude ?? 0)) * pc,
+        },
+        range,
+        tilt: t0 + (fin.tilt - t0) * suave((p - 0.2) / 0.8),
+        heading: h0 + dRumbo * suave(x / 0.6) + GIRO_FINAL * suave((x - 0.72) / 0.28),
+      });
+      while (siguiente < lista.length && range <= lista[siguiente].umbral) mostrarEtapa(lista[siguiente++]);
+      if (x < 1) cine = requestAnimationFrame(paso);
+      else terminarCine(true);
+    };
+    cine = requestAnimationFrame(paso);
+  };
 
   // Llegada: el planeta gira en su sentido real (de oeste a este) y frena con Colombia a la derecha del título;
   // en celular el título va abajo y Colombia queda al centro
@@ -471,7 +579,8 @@ export async function iniciarGlobo() {
   requestAnimationFrame(girar);
   $('[data-lienzo]').addEventListener('pointerdown', () => {
     girando = false;
-    if (animacion === 'orbita') detener();
+    if (animacion === 'orbita' || animacion === 'cine') detener();
+    if ('cine' in raiz.dataset) mostrarPaneles();
   });
 
   const hash = (h: string) => history.replaceState(null, '', h ? `#${h}` : location.pathname + location.search);
@@ -497,7 +606,7 @@ export async function iniciarGlobo() {
     volar(camaraGrupo(lotesZona), ms);
     hash(`zona-${id}`);
   };
-  const irLote = (id: string, ms = 4000) => {
+  const irLote = (id: string) => {
     const l = porId.get(id);
     if (!l) return;
     girando = false;
@@ -505,8 +614,11 @@ export async function iniciarGlobo() {
     ponerVista('lote');
     ponerMiga(l.zona.id);
     abrirFicha(id);
-    volar(camaraLlegada(l), ms, 'llegada-lote');
     hash(id);
+    vueloCine(camaraLlegada(l), l, () => {
+      // Al llegar, la cámara empieza a girar despacio alrededor del lindero
+      if (vista === 'lote' && abierto === id && !dibujando && !angosto.matches) orbitar();
+    });
   };
   const volverAlMapa = () => {
     const zona = zonaActual;
@@ -576,7 +688,7 @@ export async function iniciarGlobo() {
       if (h === abierto) return;
       const cam = camaraLlegada(porId.get(h)!);
       Object.assign(mapa, { ...cam, range: cam.range * 6, tilt: Math.max(0, cam.tilt - 20) });
-      irLote(h, 2500);
+      irLote(h);
     } else if (h.startsWith('zona-') && zonas.some((z) => z.id === h.slice(5))) {
       if (vista === 'zona' && zonaActual === h.slice(5)) return;
       Object.assign(mapa, ANTIOQUIA);
