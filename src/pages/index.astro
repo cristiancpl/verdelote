@@ -3,6 +3,7 @@
 // Llegada con el planeta girando, zonas de Antioquia, lotes con precio corto, ficha lateral y recorrido en video.
 // La clave sale de PUBLIC_GOOGLE_MAPS_KEY (.env, fuera de git). Sin clave o sin WebGL queda la lista de lotes
 import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Image, getImage } from 'astro:assets';
 import { getCollection } from 'astro:content';
 import Icon from '../components/Icon.astro';
@@ -13,9 +14,12 @@ import { zonaDe } from '../lib/zonas';
 
 const entradas = (await getCollection('lotes')).sort((a, b) => a.data.orden - b.data.orden);
 
+// Archivo de public/capas. Se resuelve desde la raíz del proyecto: import.meta.url cambia de carpeta al compilar
+const capa = (archivo: string) => join(process.cwd(), 'public', 'capas', archivo);
+
 /** Lindero dibujado en el globo (public/capas/lindero-<id>.geojson) como [{lat, lng}] */
 const lindero = (id: string) => {
-  const ruta = new URL(`../../public/capas/lindero-${id}.geojson`, import.meta.url);
+  const ruta = capa(`lindero-${id}.geojson`);
   if (!existsSync(ruta)) return [];
   const geo = JSON.parse(readFileSync(ruta, 'utf-8'));
   return (geo.features[0].geometry.coordinates[0] as number[][]).slice(0, -1).map(([lng, lat]) => ({ lat, lng }));
@@ -100,7 +104,7 @@ const territorios = [
   ...[...new Set(lotes.map((l) => l.d.departamento))].map((nombre) => ({ nombre, tipo: 'region' as const })),
 ]
   .map((t) => ({ ...t, capa: slugCapa(t.nombre) }))
-  .filter((t) => existsSync(new URL(`../../public/capas/${t.capa}.geojson`, import.meta.url)));
+  .filter((t) => existsSync(capa(`${t.capa}.geojson`)));
 
 const config = {
   key: import.meta.env.PUBLIC_GOOGLE_MAPS_KEY ?? '',
