@@ -21,8 +21,15 @@ interface LoteGlobo {
   lindero: LatLng[];
 }
 
+interface Territorio {
+  nombre: string;
+  tipo: 'pais' | 'region';
+  capa: string;
+}
+
 interface ConfigGlobo {
   key: string;
+  territorios: Territorio[];
   capas: string;
   dibujo: boolean;
   guardar: string;
@@ -42,9 +49,10 @@ declare global {
 const VERDE = '#6cc17a';
 const TINTA = '#08130b';
 const AMBAR = '#e3b65c';
-// Desde qué distancia de cámara se ven los lotes en lugar de las zonas, y hasta cuándo hay etiquetas de Google
+// Distancias de cámara: lotes en lugar de zonas, nombre de región y zonas, nombre de país
 const UMBRAL_LOTES = 160_000;
-const UMBRAL_ETIQUETAS = 1_500_000;
+const UMBRAL_REGION = 3_000_000;
+const UMBRAL_PAIS = 900_000;
 
 const PLANETA: Camara = { center: { lat: 4.5, lng: -74, altitude: 0 }, range: 17_000_000, tilt: 0, heading: 0 };
 const ANTIOQUIA: Camara = { center: { lat: 6.3, lng: -75.47, altitude: 0 }, range: 230_000, tilt: 32, heading: 0 };
@@ -247,7 +255,8 @@ export async function iniciarGlobo() {
   const { Map3DElement, Polygon3DElement, Polyline3DElement, Marker3DElement } = maps3d;
   const MarcadorClic = maps3d.Marker3DInteractiveElement ?? Marker3DElement;
 
-  const mapa = new Map3DElement({ ...PLANETA, mode: 'HYBRID' });
+  // Satélite sin etiquetas de Google: solo se nombran los países y regiones donde hay lotes
+  const mapa = new Map3DElement({ ...PLANETA, mode: 'SATELLITE' });
   $('[data-lienzo]').append(mapa);
   // En celular la lista y la ficha ocupan la parte baja: se ocultan brújula y pantalla completa (la atribución queda)
   const angosto = matchMedia('(max-width: 767px)');
@@ -261,19 +270,55 @@ export async function iniciarGlobo() {
     else el[viejo] = puntos;
   };
 
-  // Capas de contexto: país, departamento y municipios con lotes
+  // Capas de contexto: contorno y nombre de cada país y región con lotes; municipios solo de cerca
   const capa = async (nombre: string, color: string, ancho: number) => {
     const geo = await fetch(`${cfg.capas}${nombre}.geojson`).then((r) => r.json());
-    for (const f of geo.features)
-      for (const poly of f.geometry.coordinates) {
-        const el = new Polyline3DElement({ altitudeMode: 'CLAMP_TO_GROUND', strokeColor: color, strokeWidth: ancho, drawsOccludedSegments: true });
-        ruta(el, poly[0].map(([lng, lat]: number[]) => ({ lat, lng })), 'coordinates');
-        mapa.append(el);
-      }
+    const anillos: LatLng[][] = geo.features.flatMap((f: any) =>
+      f.geometry.coordinates.map((poly: number[][][]) => poly[0].map(([lng, lat]) => ({ lat, lng }))),
+    );
+    const lineas = anillos.map((a) => {
+      const el = new Polyline3DElement({ altitudeMode: 'CLAMP_TO_GROUND', strokeColor: color, strokeWidth: ancho, drawsOccludedSegments: true });
+      ruta(el, a, 'coordinates');
+      return el;
+    });
+    return { anillos, lineas };
   };
-  capa('colombia', 'rgba(255,255,255,0.9)', 3);
-  capa('antioquia', 'rgba(255,255,255,0.75)', 2);
-  capa('municipios', 'rgba(108,193,122,0.75)', 1.5);
+  // Nombre sin pin: el marcador lleva un SVG con el texto (la etiqueta nativa es muy pequeña y no se ve desde el espacio)
+  const etiqueta = (nombre: string, p: LatLng, tipo: Territorio['tipo']) => {
+    const fs = tipo === 'pais' ? 26 : 19;
+    const ancho = Math.ceil(nombre.length * fs * 0.62 + 24);
+    const alto = Math.ceil(fs * 1.6);
+    const texto = nombre.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${ancho}" height="${alto}" viewBox="0 0 ${ancho} ${alto}">` +
+      `<text x="50%" y="${fs * 1.15}" text-anchor="middle" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" ` +
+      `font-size="${fs}" font-weight="500" letter-spacing="${tipo === 'pais' ? 0.5 : 0.2}" fill="#f4f5f3" ` +
+      `stroke="rgba(11,12,13,0.55)" stroke-width="${fs / 7}" paint-order="stroke">${texto}</text></svg>`;
+    // sizePreserved: el nombre conserva su tamaño aunque la cámara esté a miles de kilómetros
+    const m = new Marker3DElement({ position: { ...p, altitude: 0 }, altitudeMode: 'CLAMP_TO_GROUND', sizePreserved: true });
+    const plantilla = document.createElement('template');
+    plantilla.innerHTML = svg;
+    m.append(plantilla);
+    return m;
+  };
+  const centroide = (a: LatLng[]) => ({ lat: a.reduce((s, p) => s + p.lat, 0) / a.length, lng: a.reduce((s, p) => s + p.lng, 0) / a.length });
+  const etiquetas: { m: any; tipo: Territorio['tipo'] }[] = [];
+  const centroideLotes = centroide(cfg.lotes);
+  for (const t of cfg.territorios) {
+    capa(t.capa, t.tipo === 'pais' ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.75)', t.tipo === 'pais' ? 3 : 2).then(({ anillos, lineas }) => {
+      lineas.forEach((l) => mapa.append(l));
+      const mayor = anillos.reduce((a, b) => (b.length > a.length ? b : a));
+      // La región se nombra un poco al norte de sus lotes, para que quede a la vista sobre las zonas
+      const lugar = t.tipo === 'pais' ? centroide(mayor) : { ...centroideLotes, lat: centroideLotes.lat + 0.5 };
+      etiquetas.push({ m: etiqueta(t.nombre, lugar, t.tipo), tipo: t.tipo });
+      programarCapas();
+    });
+  }
+  let municipios: any[] = [];
+  capa('municipios', 'rgba(108,193,122,0.75)', 1.5).then(({ lineas }) => {
+    municipios = lineas;
+    programarCapas();
+  });
 
   // Linderos de los lotes
   const poligonos = new Map<string, any>();
@@ -331,7 +376,7 @@ export async function iniciarGlobo() {
     marcadoresZona.set(z.id, m);
   }
 
-  // Qué se ve según la distancia: zonas de lejos, lotes de cerca; etiquetas de Google solo desde muy alto
+  // Qué se ve según la distancia: país de lejos, región y zonas en medio, municipios y lotes de cerca
   let dibujando = false;
   const mostrar = (m: any, si: boolean) => {
     if (si && !m.isConnected) mapa.append(m);
@@ -347,11 +392,11 @@ export async function iniciarGlobo() {
         m.dataset.n = String(n);
         m.replaceChildren(pin(VERDE, String(n), 1.3));
       }
-      mostrar(m, vista !== 'llegada' && !cerca && n > 0 && rango < UMBRAL_ETIQUETAS * 2);
+      mostrar(m, vista !== 'llegada' && !cerca && n > 0 && rango < UMBRAL_REGION);
     }
     marcadoresLote.forEach((m, id) => mostrar(m, !dibujando && cerca && (pasa.has(id) || id === abierto)));
-    const modo = rango > UMBRAL_ETIQUETAS ? 'HYBRID' : 'SATELLITE';
-    if (mapa.mode !== modo) mapa.mode = modo;
+    for (const e of etiquetas) mostrar(e.m, e.tipo === 'pais' ? rango > UMBRAL_PAIS : rango < UMBRAL_REGION && !cerca);
+    municipios.forEach((l) => mostrar(l, cerca));
   };
   let pendiente = false;
   const programarCapas = () => {
@@ -409,17 +454,20 @@ export async function iniciarGlobo() {
   });
   $$('[data-orbitar]').forEach((b) => b.addEventListener('click', () => (animacion === 'orbita' ? detener() : orbitar())));
 
-  // Llegada: el planeta gira hasta que la persona explora o toca el globo
+  // Llegada: el planeta gira en su sentido real (de oeste a este) y frena con Colombia a la derecha del título;
+  // en celular el título va abajo y Colombia queda al centro
+  const giroHasta = angosto.matches ? PLANETA.center.lng : PLANETA.center.lng - 22;
+  const giroDesde = giroHasta + 70;
   let girando = !reducido;
-  let ultimo = performance.now();
+  const giroInicio = performance.now();
   const girar = (ahora: number) => {
-    if (girando && vista === 'llegada') {
-      const c = mapa.center ?? PLANETA.center;
-      mapa.center = { lat: c.lat, lng: ((c.lng + (ahora - ultimo) * 0.0025 + 540) % 360) - 180, altitude: 0 };
-    }
-    ultimo = ahora;
-    if (girando) requestAnimationFrame(girar);
+    if (!girando || vista !== 'llegada') return;
+    const t = Math.min(1, (ahora - giroInicio) / 22_000);
+    const suave = 1 - (1 - t) ** 3;
+    mapa.center = { lat: PLANETA.center.lat, lng: giroDesde + (giroHasta - giroDesde) * suave, altitude: 0 };
+    if (t < 1) requestAnimationFrame(girar);
   };
+  mapa.center = { ...PLANETA.center, lng: reducido ? giroHasta : giroDesde };
   requestAnimationFrame(girar);
   $('[data-lienzo]').addEventListener('pointerdown', () => {
     girando = false;

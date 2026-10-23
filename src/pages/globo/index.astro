@@ -78,8 +78,19 @@ const fondo = conVuelo ? await getImage({ src: conVuelo.data.vuelo!.final, width
 const municipios = [...new Set(lotes.map((l) => l.d.municipio))].sort((a, b) => a.localeCompare(b, 'es'));
 const zonas = [...new Map(lotes.map((l) => [l.zona.id, l.zona])).values()];
 
+// Países y regiones con lotes: son los únicos con contorno y nombre en el globo (capas en public/capas/<nombre>.geojson).
+// El esquema no guarda el país: hoy todos los lotes están en Colombia
+const slugCapa = (n: string) => n.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().replace(/\s+/g, '-');
+const territorios = [
+  { nombre: 'Colombia', tipo: 'pais' as const },
+  ...[...new Set(lotes.map((l) => l.d.departamento))].map((nombre) => ({ nombre, tipo: 'region' as const })),
+]
+  .map((t) => ({ ...t, capa: slugCapa(t.nombre) }))
+  .filter((t) => existsSync(new URL(`../../../public/capas/${t.capa}.geojson`, import.meta.url)));
+
 const config = {
   key: import.meta.env.PUBLIC_GOOGLE_MAPS_KEY ?? '',
+  territorios,
   capas: url('capas/'),
   dibujo: import.meta.env.DEV,
   guardar: url('__lindero'),
@@ -98,8 +109,8 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
     {fondo && <img class="fondo" src={fondo.src} alt="" data-fondo hidden />}
 
     <section class="llegada" data-llegada aria-labelledby="llegada-titulo">
-      <h1 id="llegada-titulo">Vuela hasta tu próximo lote</h1>
-      <p>Lotes en Antioquia en 3D real. Elige una zona, toca un lote y míralo desde el aire</p>
+      <h1 id="llegada-titulo">Tu próximo lote. <span>Visto desde el cielo.</span></h1>
+      <p>Recorre Antioquia en 3D y conoce cada terreno antes de pisarlo</p>
       <div class="acciones">
         <button class="btn btn-primary" type="button" data-explorar>
           Explorar lotes <Icon name="arrow-right" />
@@ -107,7 +118,7 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
         <a class="btn btn-glass" href={url('#lotes')}>Ver en lista</a>
       </div>
       <p class="respaldo-aviso" data-respaldo-aviso hidden>
-        Este navegador no puede mostrar el globo 3D. Igual puedes recorrer la lista de lotes
+        El 3D no está disponible en este navegador. Todos los lotes siguen en la lista
       </p>
     </section>
 
@@ -383,7 +394,7 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
     left: var(--gutter);
     bottom: 96px;
     z-index: 25;
-    max-width: 560px;
+    max-width: 720px;
     display: grid;
     gap: 18px;
     transition: opacity 0.6s var(--ease), transform 0.6s var(--ease), visibility 0.6s;
@@ -393,6 +404,10 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
     line-height: 1.04;
     letter-spacing: -0.045em;
     padding-bottom: 2px;
+  }
+  .llegada h1 span {
+    display: block;
+    color: rgb(244 245 243 / 0.55);
   }
   .llegada > p {
     font-size: 1.125rem;
