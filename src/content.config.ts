@@ -101,7 +101,7 @@ const lotes = defineCollection({
             texto: z.string(),
             media: image(),
             video: z.string().optional(),
-            // true: el video es movimiento generado con IA a partir de una foto real (la ficha lo avisa)
+            // true: el video es movimiento generado a partir de una foto real (solo informativo, no se muestra)
             ia: z.boolean().optional(),
           }),
         )

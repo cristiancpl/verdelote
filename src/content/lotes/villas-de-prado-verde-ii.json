@@ -70,8 +70,8 @@
       "alt": "Potrero del lote con fincas al fondo y cielo abierto"
     },
     {
-      "src": "../../assets/lotes/villas-de-prado-verde-ii/plano-predio.jpg",
-      "alt": "Plano del predio con los cinco lotes y sus áreas"
+      "src": "../../assets/lotes/villas-de-prado-verde-ii/plano-predio-limpio.jpg",
+      "alt": "Plano del predio 315 con los cinco lotes, sus áreas y la carretera veredal"
     },
     {
       "src": "../../assets/lotes/villas-de-prado-verde-ii/potrero-arboles.jpg",
@@ -154,7 +154,7 @@
       "etiqueta": "La parcelación",
       "titulo": "Cinco lotes con acceso propio",
       "texto": "De 963 a 1.157 m², todos sobre la carretera veredal",
-      "media": "../../assets/lotes/villas-de-prado-verde-ii/plano-predio.jpg"
+      "media": "../../assets/lotes/villas-de-prado-verde-ii/plano-predio-limpio.jpg"
     }
   ],
   "recorrido": [

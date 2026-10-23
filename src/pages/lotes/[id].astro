@@ -40,7 +40,6 @@ const waPrefijo = d.contacto ? `Hola ${d.contacto.nombre}, vi ${d.nombre} en AM 
 const esGrande = (m: ImageMetadata) => m.width >= 1400 && m.width >= m.height;
 const esVertical = (m: ImageMetadata) => m.height > m.width;
 
-const iaNota = 'Movimiento generado con IA a partir de una foto real';
 
 // Selector de lote
 const unidades = d.unidades;
@@ -333,7 +332,6 @@ const fichaLd = {
                 />
                 <PauseButton videoId="hero-video" />
               </figure>
-              {clip.ia && <p class="ia-note">{iaNota}</p>}
             </div>
           )
         }
@@ -393,7 +391,6 @@ const fichaLd = {
             )
           }
         </div>
-        {clip?.ia && !heroEnmarcado && <p class="ia-note on-dock">{iaNota}</p>}
       </div>
     </div>
   </section>
@@ -530,7 +527,6 @@ const fichaLd = {
                 <span class="n">{h.etiqueta}</span>
                 <h3>{h.titulo}</h3>
                 <p>{h.texto}</p>
-                {h.video && h.ia && <small class="ia-note">{iaNota}</small>}
               </div>
             </article>
           ))}
@@ -1173,18 +1169,6 @@ const fichaLd = {
     width: 100%;
     height: 100%;
     object-fit: cover;
-  }
-  .ia-note {
-    display: block;
-    margin-top: 12px;
-    color: var(--muted);
-    font-size: 0.8125rem;
-    line-height: 1.4;
-  }
-  .ia-note.on-dock {
-    margin-top: 14px;
-    padding-left: 24px;
-    color: rgb(255 255 255 / 0.7);
   }
 
   /* Portada enmarcada: escena oscura con el texto a un lado y la foto a su proporción */
@@ -2212,9 +2196,6 @@ const fichaLd = {
     }
     .hero-pick {
       width: 100%;
-    }
-    .ia-note.on-dock {
-      padding-left: 4px;
     }
 
     .story-media {
