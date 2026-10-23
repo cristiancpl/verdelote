@@ -1,10 +1,10 @@
 # AM Grupo Inmobiliario
 
-Catálogo de lotes con recorrido virtual en video y globo 3D. Prototipo publicado en GitHub Pages.
-El repositorio conserva el nombre `verdelote` (marca anterior); el sitio pasará a un dominio propio con Cloudflare.
+Catálogo de lotes con recorrido virtual en video y globo 3D. Publicado en Cloudflare Pages.
+El repositorio conserva el nombre `verdelote` (marca anterior). GitHub Pages está apagado desde el 23 de octubre de 2026.
 
 - Plan del MVP: `../PLAN.md` y plan del globo: `../PLAN_GLOBO.md` (fuera del repo)
-- Sitio: https://cristiancpl.github.io/verdelote
+- Sitio: https://amgrupoinmobiliario.pages.dev (publicar con `npm run deploy:cf`, rama `globo`)
 
 ## Marca
 
@@ -28,6 +28,6 @@ Decisión del inicio: el lote destacado no se repite en la grilla. Su tarjeta ex
 
 ## Globo (`/globo/`)
 
-Mapas 3D de Google (`gmp-map-3d`). Clave en `PUBLIC_GOOGLE_MAPS_KEY` (`.env` local; variable del repositorio para Pages).
+Mapas 3D de Google (`gmp-map-3d`). Clave en `PUBLIC_GOOGLE_MAPS_KEY` (`.env` local, se incluye al compilar con `npm run deploy:cf`).
 En desarrollo la ficha trae "Dibujar lindero", que guarda `public/capas/lindero-<lote>.geojson`.
 `python scripts/capas.py` genera los contornos de país, región y municipios en `public/capas/`.
