@@ -21,6 +21,8 @@ const contorno = [
 const config = {
   key: import.meta.env.PUBLIC_GOOGLE_MAPS_KEY ?? '',
   capas: url('capas/'),
+  dibujo: import.meta.env.DEV,
+  guardar: url('__lindero'),
   lote: {
     slug: lote.id,
     nombre: data.nombre,
@@ -61,6 +63,14 @@ const config = {
       }
       button.primario { background: #6cc17a; color: #08130b; border-color: transparent; font-weight: 600; }
       #medidas { font: 12px/1.5 ui-monospace, monospace; color: #a4aaa6; white-space: pre; }
+      .dibujo { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid rgb(255 255 255 / 0.1); }
+      .dibujo strong { font-size: 14px; font-weight: 600; }
+      .dibujo [data-dibujo-info] { font-size: 13px; color: #f4f5f3; }
+      .dibujo .pasos { display: none; }
+      .dibujo[data-estado='dibujando'] .pasos { display: flex; }
+      .dibujo[data-estado='dibujando'] [data-dibujo='iniciar'] { display: none; }
+      .dibujo .ayuda { display: none; }
+      .dibujo[data-estado='dibujando'] .ayuda { display: block; }
       .aviso { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px; }
     </style>
   </head>
@@ -77,6 +87,22 @@ const config = {
         <button data-ir="orbita">Orbitar</button>
       </div>
       <div id="medidas">Cargando…</div>
+      {
+        config.dibujo && (
+          <div class="dibujo" data-dibujo data-estado="listo">
+            <strong>Lindero del lote</strong>
+            <span data-dibujo-info>…</span>
+            <p class="ayuda">Haz clic en cada esquina del lote, en orden. Puedes girar y acercar mientras dibujas</p>
+            <button data-dibujo="iniciar" class="primario">Dibujar lote</button>
+            <div class="fila pasos">
+              <button data-dibujo="guardar" class="primario">Guardar</button>
+              <button data-dibujo="deshacer">Deshacer</button>
+              <button data-dibujo="borrar">Borrar</button>
+              <button data-dibujo="cancelar">Cancelar</button>
+            </div>
+          </div>
+        )
+      }
     </aside>
 
     <script is:inline define:vars={{ config }}>

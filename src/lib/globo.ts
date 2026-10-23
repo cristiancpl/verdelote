@@ -1,9 +1,13 @@
 // Prueba técnica del globo (fase 1): carga Maps 3D, dibuja capas y vuela al lote.
 // API: https://developers.google.com/maps/documentation/javascript/3d-maps-overview
+import { iniciarDibujo } from './lindero';
 
 interface ConfigGlobo {
   key: string;
   capas: string;
+  /** Herramienta de dibujo del lindero (solo en desarrollo) y URL donde se guarda */
+  dibujo: boolean;
+  guardar: string;
   lote: {
     slug: string;
     nombre: string;
@@ -102,8 +106,20 @@ export async function iniciarGlobo(contenedor: HTMLElement, medidas: HTMLElement
     fillColor: 'rgba(108,193,122,0.28)',
     drawsOccludedSegments: true,
   });
-  asignarRuta(poligono, lote.contorno.map(([lng, lat]) => ({ lat, lng })), 'outerCoordinates');
-  mapa.append(poligono);
+  // Lindero dibujado en el globo (public/capas/lindero-<slug>.geojson); si no existe, el contorno aproximado
+  let contorno = lote.contorno.map(([lng, lat]) => ({ lat, lng }));
+  try {
+    const r = await fetch(`${cfg.capas}lindero-${lote.slug}.geojson?v=${Date.now()}`);
+    if (r.ok) {
+      const geo = await r.json();
+      contorno = geo.features[0].geometry.coordinates[0].slice(0, -1).map(([lng, lat]: number[]) => ({ lat, lng }));
+    }
+  } catch {}
+  const pintarLindero = (pts: { lat: number; lng: number }[]) => {
+    asignarRuta(poligono, pts.length ? pts : [], 'outerCoordinates');
+    if (!poligono.isConnected && pts.length) mapa.append(poligono);
+  };
+  pintarLindero(contorno);
 
   const marcador = new Marcador({
     position: { lat: lote.lat, lng: lote.lng, altitude: 60 },
@@ -162,6 +178,35 @@ export async function iniciarGlobo(contenedor: HTMLElement, medidas: HTMLElement
     requestAnimationFrame(medir);
   };
   requestAnimationFrame(medir);
+
+  if (cfg.dibujo) {
+    const { PinElement } = await window.google.maps.importLibrary('marker');
+    const { Marker3DElement } = maps3d;
+    let modoPrevio = mapa.mode;
+    iniciarDibujo({
+      mapa,
+      slug: lote.slug,
+      urlGuardar: cfg.guardar,
+      pintar: pintarLindero,
+      actual: () => contorno,
+      crearVertice: (p) => {
+        const v = new Marker3DElement({ position: { ...p, altitude: 0 }, altitudeMode: 'CLAMP_TO_GROUND' });
+        v.append(new PinElement({ scale: 0.55, background: '#6cc17a', borderColor: '#08130b', glyphColor: '#08130b' }));
+        return v;
+      },
+      alEntrar: () => {
+        marcador.remove();
+        modoPrevio = mapa.mode;
+        mapa.mode = 'SATELLITE';
+        // Vista cenital sobre el lote: cada clic cae donde se ve
+        volar({ center: centroLote, range: 420, tilt: 0, heading: 0 }, 2500);
+      },
+      alSalir: () => {
+        mapa.append(marcador);
+        mapa.mode = modoPrevio;
+      },
+    });
+  }
 
   // Enlace profundo: /globo/#mirador-del-valle llega directo al lote
   if (location.hash === `#${lote.slug}`) {
