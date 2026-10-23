@@ -1,5 +1,5 @@
 {
-  "nombre": "Lote Mirador del Valle",
+  "nombre": "Lote Mirador del Norte",
   "tagline": "3.800 m² de montaña, listos para construir",
   "resumen": "Explanación hecha, escrituras al día y una vista que se abre sobre el valle",
   "municipio": "Girardota",
@@ -64,50 +64,50 @@
       "minutos": 5
     }
   ],
-  "portada": "../../assets/lotes/mirador-del-valle/portada-explanacion-valle.jpg",
+  "portada": "../../assets/lotes/mirador-del-norte/portada-explanacion-valle.jpg",
   "galeria": [
     {
-      "src": "../../assets/lotes/mirador-del-valle/portada-explanacion-valle.jpg",
+      "src": "../../assets/lotes/mirador-del-norte/portada-explanacion-valle.jpg",
       "alt": "Explanación del lote con el valle y el pueblo al fondo"
     },
     {
-      "src": "../../assets/lotes/mirador-del-valle/explanacion-vista.jpg",
+      "src": "../../assets/lotes/mirador-del-norte/explanacion-vista.jpg",
       "alt": "Explanación en tierra con vista abierta a las montañas"
     },
     {
-      "src": "../../assets/lotes/mirador-del-valle/explanacion-talud.jpg",
+      "src": "../../assets/lotes/mirador-del-norte/explanacion-talud.jpg",
       "alt": "Explanación con talud cortado y vía de acceso"
     },
     {
-      "src": "../../assets/lotes/mirador-del-valle/borde-bosque.jpg",
+      "src": "../../assets/lotes/mirador-del-norte/borde-bosque.jpg",
       "alt": "Borde del lote junto al bosque nativo"
     },
     {
-      "src": "../../assets/lotes/mirador-del-valle/via-acceso.jpg",
+      "src": "../../assets/lotes/mirador-del-norte/via-acceso.jpg",
       "alt": "Vía en concreto que baja hasta el lote"
     },
     {
-      "src": "../../assets/lotes/mirador-del-valle/via-montana.jpg",
+      "src": "../../assets/lotes/mirador-del-norte/via-montana.jpg",
       "alt": "Vía de acceso entre montañas"
     },
     {
-      "src": "../../assets/lotes/mirador-del-valle/llegada-porton.jpg",
+      "src": "../../assets/lotes/mirador-del-norte/llegada-porton.jpg",
       "alt": "Llegada por la vía en concreto con vista al valle"
     },
     {
-      "src": "../../assets/lotes/mirador-del-valle/via-arbol.jpg",
+      "src": "../../assets/lotes/mirador-del-norte/via-arbol.jpg",
       "alt": "Vía de acceso bajo un árbol grande"
     }
   ],
   "video_completo": {
-    "src": "lotes/mirador-del-valle/recorrido-completo.mp4",
-    "poster": "../../assets/lotes/mirador-del-valle/recorrido-poster.jpg",
+    "src": "lotes/mirador-del-norte/recorrido-completo.mp4",
+    "poster": "../../assets/lotes/mirador-del-norte/recorrido-poster.jpg",
     "duracion": "1:05"
   },
   "vuelo": {
-    "src": "lotes/mirador-del-valle/vuelo.mp4",
-    "poster": "../../assets/lotes/mirador-del-valle/vuelo-inicio.jpg",
-    "final": "../../assets/lotes/mirador-del-valle/vuelo-final.jpg",
+    "src": "lotes/mirador-del-norte/vuelo.mp4",
+    "poster": "../../assets/lotes/mirador-del-norte/vuelo-inicio.jpg",
+    "final": "../../assets/lotes/mirador-del-norte/vuelo-final.jpg",
     "duracion_s": 32,
     "etapas": [
       {
@@ -132,8 +132,8 @@
       }
     ]
   },
-  "teaser": "lotes/mirador-del-valle/teaser.mp4",
-  "video_vertical": "lotes/mirador-del-valle/recorrido-vertical.mp4",
+  "teaser": "lotes/mirador-del-norte/teaser.mp4",
+  "video_vertical": "lotes/mirador-del-norte/recorrido-vertical.mp4",
   "coordenadas": {
     "lat": 6.407989,
     "lon": -75.438164,
@@ -147,23 +147,23 @@
     {
       "titulo": "Llegada",
       "descripcion": "Carretera en buen estado hasta la entrada del lote",
-      "poster": "../../assets/lotes/mirador-del-valle/via-acceso.jpg"
+      "poster": "../../assets/lotes/mirador-del-norte/via-acceso.jpg"
     },
     {
       "titulo": "El terreno",
       "descripcion": "1.000 m² ya explanados, listos para construir",
-      "poster": "../../assets/lotes/mirador-del-valle/explanacion-talud.jpg"
+      "poster": "../../assets/lotes/mirador-del-norte/explanacion-talud.jpg"
     },
     {
       "titulo": "La vista",
       "descripcion": "Montaña al frente y el valle abierto a tus pies",
-      "poster": "../../assets/lotes/mirador-del-valle/la-vista-poster.jpg",
-      "video": "lotes/mirador-del-valle/la-vista.mp4"
+      "poster": "../../assets/lotes/mirador-del-norte/la-vista-poster.jpg",
+      "video": "lotes/mirador-del-norte/la-vista.mp4"
     },
     {
       "titulo": "Desde el aire",
       "descripcion": "3.800 m² en una ladera verde de Girardota",
-      "poster": "../../assets/lotes/mirador-del-valle/portada-explanacion-valle.jpg"
+      "poster": "../../assets/lotes/mirador-del-norte/portada-explanacion-valle.jpg"
     }
   ],
   "frase": {
@@ -175,32 +175,32 @@
       "etiqueta": "Ubicación",
       "titulo": "En la ladera, sobre Girardota",
       "texto": "A 6 minutos de la doble calzada y a 15 del parque principal. Campo, sin dejar la ciudad lejos",
-      "media": "../../assets/lotes/mirador-del-valle/vuelo-final.jpg"
+      "media": "../../assets/lotes/mirador-del-norte/vuelo-final.jpg"
     },
     {
       "etiqueta": "Llegada",
       "titulo": "Carretera hasta la puerta",
       "texto": "Vía en concreto en buen estado hasta el lote. Llegas en carro, sin trochas",
-      "media": "../../assets/lotes/mirador-del-valle/via-acceso.jpg"
+      "media": "../../assets/lotes/mirador-del-norte/via-acceso.jpg"
     },
     {
       "etiqueta": "El terreno",
       "titulo": "1.000 m² ya explanados",
       "texto": "La explanación está hecha. Puedes empezar a construir desde el primer día",
-      "media": "../../assets/lotes/mirador-del-valle/explanacion-talud.jpg"
+      "media": "../../assets/lotes/mirador-del-norte/explanacion-talud.jpg"
     },
     {
       "etiqueta": "La vista",
       "titulo": "Montaña al frente",
       "texto": "El valle se abre a tus pies. Atardeceres sobre Girardota desde tu propia terraza",
-      "media": "../../assets/lotes/mirador-del-valle/la-vista-poster.jpg",
-      "video": "lotes/mirador-del-valle/la-vista.mp4"
+      "media": "../../assets/lotes/mirador-del-norte/la-vista-poster.jpg",
+      "video": "lotes/mirador-del-norte/la-vista.mp4"
     },
     {
       "etiqueta": "Desde el aire",
       "titulo": "3.800 m² para imaginar",
       "texto": "Espacio para casa, huerta y jardín. Agua de riego y acueducto veredal",
-      "media": "../../assets/lotes/mirador-del-valle/portada-explanacion-valle.jpg"
+      "media": "../../assets/lotes/mirador-del-norte/portada-explanacion-valle.jpg"
     }
   ],
   "foto_mosaico": 5,

@@ -1,4 +1,4 @@
-/* Tema cinemático: oscuro único, un solo acento verde, radio 18px en superficies y pill en controles.
+/* Tema cinemático de AM Grupo Inmobiliario: oscuro único, un solo acento dorado de la marca, radio 18px en superficies y pill en controles.
    Escala de capas (z-index): nav 30, barra fija de la ficha 40, toast 60. Diálogos usan la capa superior nativa */
 @import '@fontsource/geist-sans/400.css';
 @import '@fontsource/geist-sans/500.css';
@@ -13,8 +13,8 @@
   --text: #f4f5f3;
   --muted: #a4aaa6;
   --line: rgb(255 255 255 / 0.1);
-  --accent: #6cc17a;
-  --accent-ink: #08130b;
+  --accent: #b78f54;
+  --accent-ink: #14100a;
   --radius: 18px;
   --max: 1320px;
   --nav-h: 64px;
@@ -262,8 +262,8 @@ p {
 /* Portada sobria de los lotes sin video ni fotos */
 .bg-sobrio {
   background:
-    radial-gradient(120% 90% at 78% 12%, rgb(108 193 122 / 0.22), transparent 55%),
-    linear-gradient(160deg, #1d2120 0%, #172a20 55%, #0f1613 100%);
+    radial-gradient(120% 90% at 78% 12%, rgb(183 143 84 / 0.2), transparent 55%),
+    linear-gradient(160deg, #1f1d1a 0%, #211c15 55%, #12100d 100%);
 }
 
 .band {
@@ -420,7 +420,7 @@ p {
     --text: #16181a;
     --muted: #4a4f53;
     --line: #cfd2cf;
-    --accent: #2f6b3f;
+    --accent: #7d5f30;
     --accent-ink: #ffffff;
     --gutter: 0px;
     color-scheme: light;

@@ -1,5 +1,5 @@
 ---
-// Verdelote globo: el comprador navega un globo 3D fotorrealista (gmp-map-3d) hasta cada lote.
+// Globo de AM Grupo Inmobiliario: el comprador navega un globo 3D fotorrealista (gmp-map-3d) hasta cada lote.
 // Llegada con el planeta girando, zonas de Antioquia, lotes con precio corto, ficha lateral y recorrido en video.
 // La clave sale de PUBLIC_GOOGLE_MAPS_KEY (.env, fuera de git). Sin clave o sin WebGL queda la lista de lotes
 import { existsSync, readFileSync } from 'node:fs';
@@ -42,7 +42,7 @@ const lotes = await Promise.all(
         corto: nombreCorto(d.nombre),
         whatsapp: d.contacto
           ? `https://wa.me/${d.contacto.whatsapp}?text=${encodeURIComponent(
-              `Hola ${d.contacto.nombre}, vi el ${d.nombre} en Verdelote y quiero agendar una visita`,
+              `Hola ${d.contacto.nombre}, vi el ${d.nombre} en AM Grupo Inmobiliario y quiero agendar una visita`,
             )}`
           : undefined,
         ruta:
@@ -108,7 +108,7 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
   nav="overlay"
 >
   <div class="globo" data-globo data-vista="llegada">
-    <div class="lienzo" data-lienzo role="region" aria-label="Globo 3D con los lotes de Verdelote"></div>
+    <div class="lienzo" data-lienzo role="region" aria-label="Globo 3D con los lotes de AM Grupo Inmobiliario"></div>
     {fondo && <img class="fondo" src={fondo.src} alt="" data-fondo hidden />}
 
     <div class="etapa" data-etapa aria-live="polite">
@@ -606,7 +606,7 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
     color: var(--muted);
   }
   .buscar:focus-within {
-    border-color: rgb(108 193 122 / 0.6);
+    border-color: rgb(183 143 84 / 0.6);
   }
   .buscar input {
     flex: 1;
@@ -764,7 +764,7 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
     background: rgb(255 255 255 / 0.07);
   }
   .item[aria-current='true'] {
-    box-shadow: inset 0 0 0 1px rgb(108 193 122 / 0.5);
+    box-shadow: inset 0 0 0 1px rgb(183 143 84 / 0.55);
   }
   .thumb {
     width: 56px;
@@ -776,7 +776,7 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
     display: grid;
     place-items: center;
     background: var(--card);
-    color: rgb(108 193 122 / 0.6);
+    color: rgb(183 143 84 / 0.6);
     font-size: 1.25rem;
   }
   .item-txt,
@@ -869,7 +869,7 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
   .foto-vacia :global(.icon) {
     width: 28px;
     height: 28px;
-    color: rgb(108 193 122 / 0.6);
+    color: rgb(183 143 84 / 0.6);
   }
   .cuerpo {
     display: grid;
@@ -936,7 +936,7 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
     color: var(--accent);
   }
   .estado.reservado {
-    color: #e3b65c;
+    color: var(--muted);
   }
   .atributos {
     list-style: none;
@@ -970,7 +970,7 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
     flex: 1 1 auto;
   }
   [data-orbitar][aria-pressed='true'] {
-    background: rgb(108 193 122 / 0.18);
+    background: rgb(183 143 84 / 0.18);
     color: var(--accent);
   }
 

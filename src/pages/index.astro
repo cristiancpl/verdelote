@@ -163,7 +163,7 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
 
   {
     destacado && d && (
-      <section class="band wrap" aria-label="Lote destacado">
+      <section class="band wrap" aria-label="Lote destacado" id={resto.length ? undefined : 'lotes'}>
         <div class="featured reveal">
           <div class="media">
             <a class="mlink" href={fichaUrl}>
@@ -213,7 +213,8 @@ const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) 
     )
   }
 
-  <section class="wrap lotes" id="lotes" aria-label="Lotes disponibles">
+  {/* Con un solo lote la grilla queda vacía: se oculta y el ancla #lotes pasa al bloque destacado */}
+  <section class="wrap lotes" id={resto.length ? 'lotes' : undefined} aria-label="Lotes disponibles" hidden={resto.length === 0}>
     <div class="toolbar">
       <div class="thead">
         <h2>Más lotes en Antioquia</h2>

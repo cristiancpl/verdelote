@@ -22,7 +22,7 @@ const lugar = [d.vereda, d.municipio, d.departamento].filter(Boolean).join(', ')
 const kicker = `${d.vereda ? `${d.vereda} · ` : ''}${d.municipio}, ${d.departamento}`;
 const whatsappUrl = d.contacto
   ? `https://wa.me/${d.contacto.whatsapp}?text=${encodeURIComponent(
-      `Hola ${d.contacto.nombre}, vi el ${d.nombre} en Verdelote y quiero agendar una visita`,
+      `Hola ${d.contacto.nombre}, vi el ${d.nombre} en AM Grupo Inmobiliario y quiero agendar una visita`,
     )}`
   : undefined;
 

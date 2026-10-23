@@ -1,4 +1,4 @@
-// Globo de Verdelote: llegada con el planeta girando, lotes visibles y clicables a cualquier distancia
+// Globo de AM Grupo Inmobiliario: llegada con el planeta girando, lotes visibles y clicables a cualquier distancia
 // (de lejos agrupados por región), vuelo cinemático al lote como el video publicado, ficha lateral y órbita. La lista y los filtros funcionan también sin el globo (respaldo).
 // API: https://developers.google.com/maps/documentation/javascript/3d-maps-overview
 import { iniciarDibujo, type LatLng } from './lindero';
@@ -50,9 +50,10 @@ declare global {
   }
 }
 
-const VERDE = '#6cc17a';
-const TINTA = '#08130b';
-const AMBAR = '#e3b65c';
+// Colores de la marca: dorado para lo disponible, gris para reservado, tinta oscura en bordes y números
+const DORADO = '#b78f54';
+const TINTA = '#14100a';
+const GRIS = '#9aa09c';
 // Distancias de cámara: lotes uno a uno (más lejos se agrupan por región), nombre de región, municipios y país
 const UMBRAL_LOTES = 450_000;
 const UMBRAL_NOMBRE_REGION = 120_000;
@@ -77,8 +78,8 @@ const $$ = <T extends HTMLElement = HTMLElement>(s: string, raiz: ParentNode = d
 function cargarMaps(key: string): Promise<void> {
   if (window.google?.maps?.importLibrary) return Promise.resolve();
   return new Promise((resolve, reject) => {
-    const params = new URLSearchParams({ key, v: 'weekly', language: 'es', region: 'CO', loading: 'async', callback: '__verdeloteMaps' });
-    (window as any).__verdeloteMaps = () => resolve();
+    const params = new URLSearchParams({ key, v: 'weekly', language: 'es', region: 'CO', loading: 'async', callback: '__amGloboMaps' });
+    (window as any).__amGloboMaps = () => resolve();
     const s = document.createElement('script');
     s.src = `https://maps.googleapis.com/maps/api/js?${params}`;
     s.async = true;
@@ -330,7 +331,7 @@ export async function iniciarGlobo() {
     });
   }
   let municipios: any[] = [];
-  capa('municipios', 'rgba(108,193,122,0.75)', 1.5).then(({ lineas }) => {
+  capa('municipios', 'rgba(183,143,84,0.75)', 1.5).then(({ lineas }) => {
     municipios = lineas;
     programarCapas();
   });
@@ -347,9 +348,9 @@ export async function iniciarGlobo() {
       el = new Polygon3DElement({ altitudeMode: 'CLAMP_TO_GROUND', drawsOccludedSegments: true });
       poligonos.set(id, el);
     }
-    el.strokeColor = resaltado ? 'rgba(108,193,122,1)' : 'rgba(108,193,122,0.8)';
+    el.strokeColor = resaltado ? 'rgba(196,158,100,1)' : 'rgba(183,143,84,0.85)';
     el.strokeWidth = resaltado ? 4 : 2;
-    el.fillColor = resaltado ? 'rgba(108,193,122,0.32)' : 'rgba(108,193,122,0.16)';
+    el.fillColor = resaltado ? 'rgba(183,143,84,0.32)' : 'rgba(183,143,84,0.16)';
     ruta(el, puntos, 'outerCoordinates');
     if (!el.isConnected) mapa.append(el);
   };
@@ -358,7 +359,7 @@ export async function iniciarGlobo() {
   // Marcadores: uno por zona (vista Antioquia) y uno por lote con su precio corto (vista zona)
   const pin = (fondo: string, glifo?: string, escala = 1) =>
     new PinElement({ background: fondo, borderColor: TINTA, glyphColor: TINTA, scale: escala, ...(glifo ? { glyphText: glifo } : {}) });
-  const colorLote = (l: LoteGlobo, activo: boolean) => (activo ? '#f4f5f3' : l.estado === 'disponible' ? VERDE : AMBAR);
+  const colorLote = (l: LoteGlobo, activo: boolean) => (activo ? '#f4f5f3' : l.estado === 'disponible' ? DORADO : GRIS);
 
   const marcadoresLote = new Map<string, any>();
   for (const l of cfg.lotes) {
@@ -408,7 +409,7 @@ export async function iniciarGlobo() {
       const n = cfg.lotes.filter((l) => l.departamento === region && pasa.has(l.id)).length;
       if (m.dataset.n !== String(n)) {
         m.dataset.n = String(n);
-        m.replaceChildren(pin(VERDE, String(n), 1.3));
+        m.replaceChildren(pin(DORADO, String(n), 1.3));
       }
       mostrar(m, !cerca && n > 0);
     });
@@ -652,7 +653,7 @@ export async function iniciarGlobo() {
         },
         crearVertice: (p) => {
           const v = new Marker3DElement({ position: { ...p, altitude: 0 }, altitudeMode: 'CLAMP_TO_GROUND' });
-          v.append(pin(VERDE, undefined, 0.55));
+          v.append(pin(DORADO, undefined, 0.55));
           return v;
         },
       })

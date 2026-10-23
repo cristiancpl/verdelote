@@ -1,10 +1,11 @@
 ---
-import Icon from '../components/Icon.astro';
+import { Image } from 'astro:assets';
+import marca from '../assets/marca/am-marca-claro.png';
 import { absoluteUrl, url } from '../lib/format';
 import '../styles/global.css';
 
 interface Props {
-  /** Título de la página sin la marca; se arma como "Título · Verdelote" */
+  /** Título de la página sin la marca; se arma como "Título · AM Grupo Inmobiliario" */
   title?: string;
   description?: string;
   /** URL absoluta de la imagen para la vista previa al compartir (1200x630) */
@@ -18,12 +19,12 @@ interface Props {
   nav?: 'overlay' | 'solid';
 }
 
-const SITE_NAME = 'Verdelote';
+const SITE_NAME = 'AM Grupo Inmobiliario';
 const {
   title,
   description = 'Lotes en Antioquia con recorrido en video, datos claros y contacto directo con el dueño',
   image = absoluteUrl(url('og-default.png')),
-  imageAlt = 'Verdelote, lotes en Antioquia',
+  imageAlt = 'AM Grupo Inmobiliario, lotes en Antioquia',
   jsonLd,
   noindex = false,
   nav = 'solid',
@@ -47,7 +48,7 @@ const ldJson = (node: object) => JSON.stringify(node).replace(/</g, '\\u003c');
     <script is:inline>
       document.documentElement.classList.add('js');
     </script>
-    <link rel="icon" type="image/svg+xml" href={url('favicon.svg')} />
+    <link rel="icon" type="image/png" href={url('favicon.png')} />
     <link rel="apple-touch-icon" href={url('apple-touch-icon.png')} />
     {noindex ? <meta name="robots" content="noindex" /> : <link rel="canonical" href={canonical} />}
 
@@ -69,7 +70,10 @@ const ldJson = (node: object) => JSON.stringify(node).replace(/</g, '\\u003c');
   <body>
     <header class:list={['nav', 'no-print', { solid: nav === 'solid' }]} id="nav" data-nav>
       <div class="wrap">
-        <a class="brand" href={url()}><Icon name="mountains" />Verdelote</a>
+        <a class="brand" href={url()} aria-label={`${SITE_NAME}, inicio`}>
+          <Image src={marca} alt="" width={66} height={32} densities={[1, 2, 3]} />
+          <span>Grupo Inmobiliario</span>
+        </a>
         <nav aria-label="Principal">
           <a href={url('#lotes')} aria-current={Astro.url.pathname === url('/') ? 'page' : undefined}>Lotes</a>
         </nav>
@@ -81,7 +85,7 @@ const ldJson = (node: object) => JSON.stringify(node).replace(/</g, '\\u003c');
       <slot />
     </main>
     <footer class="wrap site-footer">
-      <p>Verdelote · Prototipo</p>
+      <p>AM Grupo Inmobiliario</p>
     </footer>
     <div class="toast" role="status" aria-live="polite" data-toast></div>
   </body>
@@ -118,10 +122,19 @@ const ldJson = (node: object) => JSON.stringify(node).replace(/</g, '\\u003c');
     font-size: 1.125rem;
     letter-spacing: -0.02em;
   }
-  .brand :global(.icon) {
-    width: 1.35rem;
-    height: 1.35rem;
-    color: var(--accent);
+  .brand {
+    gap: 12px;
+  }
+  .brand img {
+    height: 32px;
+    width: auto;
+  }
+  .brand span {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: rgb(244 245 243 / 0.82);
   }
   nav a {
     display: inline-flex;
