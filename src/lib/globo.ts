@@ -377,7 +377,8 @@ export async function iniciarGlobo() {
       altitudeMode: 'RELATIVE_TO_GROUND',
       extruded: true,
       sizePreserved: true,
-      label: l.precioCorto,
+      // Nombre del proyecto y precio en el pin: "Villas de Prado Verde · Desde $110 M"
+      label: `${l.nombre} · ${l.precioCorto}`,
       title: `${l.nombre}, ${l.municipio}`,
     });
     m.append(pin(colorLote(l, false)));
