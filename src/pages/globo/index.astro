@@ -1,0 +1,90 @@
+---
+// Fase 1 del plan del globo: prueba técnica con gmp-map-3d (Photorealistic 3D Tiles).
+// Globo, contorno de Colombia y Antioquia, marcador del Mirador del Valle y vuelo de cámara con un clic.
+// La clave sale de PUBLIC_GOOGLE_MAPS_KEY (.env, fuera de git). Sin clave se muestra un aviso
+import { getEntry } from 'astro:content';
+import { formatPrecioCorto, url } from '../../lib/format';
+
+const lote = await getEntry('lotes', 'mirador-del-valle');
+if (!lote) throw new Error('Falta el lote mirador-del-valle');
+const { data } = lote;
+if (!data.coordenadas) throw new Error('El lote no tiene coordenadas');
+const { lat, lon } = data.coordenadas;
+
+// Contorno aproximado del KML (verdelote_limites_pais.kml), [lon, lat]
+const contorno = [
+  [-75.438608, 6.407914], [-75.438337, 6.40812], [-75.43809, 6.408238], [-75.437843, 6.408257],
+  [-75.437607, 6.408193], [-75.437587, 6.408032], [-75.437843, 6.408002], [-75.43809, 6.407953],
+  [-75.438337, 6.4079], [-75.438445, 6.407836], [-75.438504, 6.407689], [-75.438682, 6.407728],
+];
+
+const config = {
+  key: import.meta.env.PUBLIC_GOOGLE_MAPS_KEY ?? '',
+  capas: url('capas/'),
+  lote: {
+    slug: lote.id,
+    nombre: data.nombre,
+    precio: formatPrecioCorto(data.precio_cop),
+    lat,
+    lng: lon,
+    // Altura del terreno y cámara de llegada del vuelo v7 (prep/vuelo/ges/generar_esp_directo.py)
+    alt: 1538,
+    camara: { range: 470, tilt: 64, heading: 340 },
+    contorno,
+  },
+};
+---
+
+<html lang="es-CO">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <meta name="color-scheme" content="dark" />
+    <title>Globo · prueba técnica · Verdelote</title>
+    <link rel="icon" type="image/svg+xml" href={url('favicon.svg')} />
+    <style>
+      html, body { margin: 0; height: 100%; background: #0b0c0d; color: #f4f5f3; font: 15px/1.4 system-ui, sans-serif; }
+      #globo { position: fixed; inset: 0; }
+      gmp-map-3d { width: 100%; height: 100%; }
+      .panel {
+        position: fixed; top: 16px; left: 16px; z-index: 2; display: grid; gap: 8px; max-width: 320px;
+        padding: 14px; border-radius: 18px; background: rgb(11 12 13 / 0.72); backdrop-filter: blur(14px);
+        border: 1px solid rgb(255 255 255 / 0.1);
+      }
+      .panel h1 { margin: 0; font-size: 16px; font-weight: 600; }
+      .panel p { margin: 0; color: #a4aaa6; font-size: 13px; }
+      .fila { display: flex; flex-wrap: wrap; gap: 6px; }
+      button {
+        font: inherit; font-size: 13px; padding: 7px 12px; border-radius: 999px; cursor: pointer;
+        border: 1px solid rgb(255 255 255 / 0.16); background: rgb(255 255 255 / 0.06); color: inherit;
+      }
+      button.primario { background: #6cc17a; color: #08130b; border-color: transparent; font-weight: 600; }
+      #medidas { font: 12px/1.5 ui-monospace, monospace; color: #a4aaa6; white-space: pre; }
+      .aviso { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px; }
+    </style>
+  </head>
+  <body>
+    <div id="globo"></div>
+    <aside class="panel">
+      <h1>Prueba técnica del globo</h1>
+      <p>Clic en el marcador del lote o en los botones</p>
+      <div class="fila">
+        <button data-ir="planeta">Planeta</button>
+        <button data-ir="colombia">Colombia</button>
+        <button data-ir="antioquia">Antioquia</button>
+        <button data-ir="lote" class="primario">Ir al lote</button>
+        <button data-ir="orbita">Orbitar</button>
+      </div>
+      <div id="medidas">Cargando…</div>
+    </aside>
+
+    <script is:inline define:vars={{ config }}>
+      window.VERDELOTE_GLOBO = config;
+    </script>
+    <script>
+      import { iniciarGlobo } from '../../lib/globo';
+      iniciarGlobo(document.getElementById('globo')!, document.getElementById('medidas')!);
+    </script>
+  </body>
+</html>
