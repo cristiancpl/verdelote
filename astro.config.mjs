@@ -2,7 +2,11 @@
 import { writeFile } from 'node:fs/promises';
 import { defineConfig } from 'astro/config';
 
-const BASE = '/verdelote';
+// GitHub Pages sirve el sitio bajo /verdelote; Cloudflare Pages (CF_PAGES=1) lo sirve en la raíz de su dominio.
+// SITE_URL y BASE_PATH permiten fijar otro dominio o ruta sin tocar el código
+const enCloudflare = process.env.CF_PAGES === '1';
+const BASE = process.env.BASE_PATH ?? (enCloudflare ? '/' : '/verdelote');
+const SITE = process.env.SITE_URL ?? (enCloudflare ? process.env.CF_PAGES_URL : undefined) ?? 'https://cristiancpl.github.io';
 
 /**
  * Solo en `astro dev`: recibe el lindero dibujado en /globo/ y lo guarda en public/capas/lindero-<slug>.geojson
@@ -43,7 +47,7 @@ const guardarLindero = () => ({
 
 // https://astro.build/config
 export default defineConfig({
-  site: 'https://cristiancpl.github.io',
+  site: SITE,
   base: BASE,
   vite: { plugins: [guardarLindero()] },
 });

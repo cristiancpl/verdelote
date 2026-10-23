@@ -10,7 +10,7 @@ export const formatPrecio = (valor: number) => cop.format(valor);
 
 export const formatArea = (m2: number) => `${num.format(m2)} m²`;
 
-/** Une una ruta con el base path del sitio (GitHub Pages sirve bajo /verdelote) */
+/** Une una ruta con el base path del sitio (/verdelote en GitHub Pages, / en Cloudflare) */
 export const url = (path = '') =>
   `${import.meta.env.BASE_URL.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
 
