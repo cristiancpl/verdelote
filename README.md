@@ -26,7 +26,9 @@ Campos opcionales de `src/content/lotes/*.json` que activan las partes ricas de 
 
 Decisión del inicio: el lote destacado no se repite en la grilla. Su tarjeta existe oculta y solo aparece cuando hay filtros activos y coincide, para que "Solo con recorrido" o un municipio lo encuentren. Con un solo lote la grilla se oculta.
 
-## Globo (`/globo/`)
+## Inicio: globo 3D (`/`)
+
+El inicio es el globo en vivo (antes `/globo/`, que ahora redirige conservando `#lote`). La lista de lotes está en `/lotes/`.
 
 Mapas 3D de Google (`gmp-map-3d`). Clave en `PUBLIC_GOOGLE_MAPS_KEY` (`.env` local, se incluye al compilar con `npm run deploy:cf`).
 En desarrollo la ficha trae "Dibujar lindero", que guarda `public/capas/lindero-<lote>.geojson`.

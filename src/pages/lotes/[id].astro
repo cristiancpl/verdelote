@@ -243,7 +243,7 @@ const fichaLd = {
 
   <div class="bar no-print" slot="localbar" data-bar>
     <div class="wrap">
-      <a class="back" href={url()} aria-label="Volver a los lotes"><Icon name="caret-left" /><span>Lotes</span></a>
+      <a class="back" href={url('lotes/')} aria-label="Volver a los lotes"><Icon name="caret-left" /><span>Lotes</span></a>
       <span class="name">{d.nombre}</span>
       <div class="right">
         <div class="pricebox">
@@ -625,7 +625,7 @@ const fichaLd = {
                     Ver el vuelo
                   </button>
                 )}
-                <a class="btn btn-glass" href={url(`globo/#${lote.id}`)}>
+                <a class="btn btn-glass" href={url(`#${lote.id}`)}>
                   <Icon name="globe-hemisphere-west" />
                   Ver en el mapa 3D
                 </a>
@@ -718,7 +718,7 @@ const fichaLd = {
           <h2 class="reveal">Explora más lotes</h2>
           <p>{d.demo ? 'Este es un lote de demostración, con datos de ejemplo' : 'Mira los demás lotes disponibles en Antioquia'}</p>
           <div class="actions">
-            <a class="btn btn-primary" href={url('#lotes')}>Ver todos los lotes</a>
+            <a class="btn btn-primary" href={url('lotes/')}>Ver todos los lotes</a>
           </div>
         </>
       )

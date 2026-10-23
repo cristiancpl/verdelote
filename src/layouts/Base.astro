@@ -86,9 +86,9 @@ const ldJson = (node: object) => JSON.stringify(node).replace(/</g, '\\u003c');
           <span>Grupo Inmobiliario</span>
         </a>
         <nav aria-label="Principal">
-          <a href={url('#lotes')} aria-current={enInicio ? 'page' : undefined}>Lotes</a>
-          <a href={url('globo/')} aria-current={Astro.url.pathname === url('globo/') ? 'page' : undefined}>Mapa 3D</a>
-          <a href="#contacto">Contacto</a>
+          <a href={url()} aria-current={enInicio ? 'page' : undefined}>Explorar</a>
+          <a href={url('lotes/')} aria-current={Astro.url.pathname === url('lotes/') ? 'page' : undefined}>Lotes</a>
+          <a href={url('lotes/#contacto')}>Contacto</a>
         </nav>
         <div class="right">
           <slot name="nav-right">
@@ -111,8 +111,8 @@ const ldJson = (node: object) => JSON.stringify(node).replace(/</g, '\\u003c');
           <div>
             <h2>Explorar</h2>
             <ul>
-              <li><a href={url('#lotes')}>Lotes</a></li>
-              <li><a href={url('globo/')}>Mapa 3D</a></li>
+              <li><a href={url()}>Explorar en 3D</a></li>
+              <li><a href={url('lotes/')}>Lotes</a></li>
             </ul>
           </div>
           <div>
@@ -120,7 +120,7 @@ const ldJson = (node: object) => JSON.stringify(node).replace(/</g, '\\u003c');
             <ul>
               {municipios.map((m) => (
                 <li>
-                  <a href={url(`?municipio=${encodeURIComponent(m)}#lotes`)}>{m}</a>
+                  <a href={url(`lotes/?municipio=${encodeURIComponent(m)}#lotes`)}>{m}</a>
                 </li>
               ))}
             </ul>

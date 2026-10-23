@@ -1,929 +1,1187 @@
 ---
-import { getImage } from 'astro:assets';
+// Inicio de AM Grupo Inmobiliario, el globo 3D: el comprador navega un globo 3D fotorrealista (gmp-map-3d) hasta cada lote.
+// Llegada con el planeta girando, zonas de Antioquia, lotes con precio corto, ficha lateral y recorrido en video.
+// La clave sale de PUBLIC_GOOGLE_MAPS_KEY (.env, fuera de git). Sin clave o sin WebGL queda la lista de lotes
+import { existsSync, readFileSync } from 'node:fs';
+import { Image, getImage } from 'astro:assets';
 import { getCollection } from 'astro:content';
 import Icon from '../components/Icon.astro';
-import antioquia3d from '../assets/globo/antioquia.jpg';
-import LoteCard from '../components/LoteCard.astro';
-import PauseButton from '../components/PauseButton.astro';
 import Base from '../layouts/Base.astro';
-import { absoluteUrl, formatArea, formatPrecio, formatPrecioCorto, formatPrecioM2, nombreCorto, url } from '../lib/format';
-import { primerClip, textoArea, textoPrecio, textoPrecioCorto, textoPrecioDetalle } from '../lib/lote';
+import { formatArea, formatPrecio, formatPrecioCorto, formatPrecioM2, nombreCorto, url } from '../lib/format';
+import { textoArea, textoPrecio, textoPrecioCorto, textoPrecioDetalle, tieneRecorrido } from '../lib/lote';
+import { zonaDe } from '../lib/zonas';
 
-const lotes = (await getCollection('lotes')).sort((a, b) => a.data.orden - b.data.orden);
-const destacado = lotes.find((l) => l.data.destacado);
-const d = destacado?.data;
-const resto = lotes.filter((l) => l !== destacado);
-const fichaUrl = destacado ? url(`lotes/${destacado.id}/`) : undefined;
+const entradas = (await getCollection('lotes')).sort((a, b) => a.data.orden - b.data.orden);
 
-// Hero: el vuelo del lote destacado (sin bucle); si no hay vuelo, su teaser o primer clip como antes
-const vuelo = d?.vuelo;
-const clip = d ? primerClip(d, true) : undefined;
-const heroSrc = vuelo?.src ?? d?.teaser ?? clip?.video ?? clip?.src;
-const modo = !destacado || !heroSrc ? 'estatico' : vuelo ? 'vuelo' : 'teaser';
-const heroPosterSrc = vuelo?.poster ?? (d?.teaser ? (d.video_completo?.poster ?? clip?.poster) : clip?.poster);
-const heroPoster = heroPosterSrc ? (await getImage({ src: heroPosterSrc, width: 1920, format: 'webp' })).src : undefined;
-const heroFinal = vuelo ? (await getImage({ src: vuelo.final, width: 1920, format: 'webp' })).src : undefined;
-const etapas = vuelo
-  ? vuelo.etapas.map((e, i) => ({ nombre: e.nombre, a: e.desde_s, b: vuelo.etapas[i + 1]?.desde_s ?? vuelo.duracion_s }))
-  : [];
-
-// Bloque "Destacado": clip en bucle del lote, y cuatro datos tomados de sus cifras y su precio
-const clipPoster = clip ? (await getImage({ src: clip.poster, width: 1400, format: 'webp' })).src : undefined;
-const datos = d
-  ? [
-      ...(d.cifras ?? [{ valor: textoArea(d), etiqueta: 'Área total' }]).slice(0, 3).map((c) => ({ valor: c.valor, etiqueta: c.etiqueta })),
-      { valor: textoPrecioCorto(d), etiqueta: textoPrecioDetalle(d) },
-    ]
-  : [];
-
-// Vista previa al compartir: portada del lote destacado en 1200x630
-const og = d?.portada
-  ? await getImage({ src: d.portada, width: 1200, height: 630, fit: 'cover', format: 'jpg', quality: 78 })
-  : undefined;
-const listado = {
-  '@context': 'https://schema.org',
-  '@type': 'ItemList',
-  name: 'Lotes en Antioquia',
-  numberOfItems: lotes.length,
-  itemListElement: lotes.map((l, i) => ({
-    '@type': 'ListItem',
-    position: i + 1,
-    name: l.data.nombre,
-    url: absoluteUrl(url(`lotes/${l.id}/`)),
-  })),
+/** Lindero dibujado en el globo (public/capas/lindero-<id>.geojson) como [{lat, lng}] */
+const lindero = (id: string) => {
+  const ruta = new URL(`../../public/capas/lindero-${id}.geojson`, import.meta.url);
+  if (!existsSync(ruta)) return [];
+  const geo = JSON.parse(readFileSync(ruta, 'utf-8'));
+  return (geo.features[0].geometry.coordinates[0] as number[][]).slice(0, -1).map(([lng, lat]) => ({ lat, lng }));
 };
-const municipios = [...new Set(lotes.map((l) => l.data.municipio))].sort((a, b) => a.localeCompare(b, 'es'));
 
-// Bloque "Antioquia, en 3D": cuadro de Antioquia del vuelo publicado (Earth Studio, con su atribución)
-const img3d = await getImage({ src: antioquia3d, width: 2000, format: 'webp' });
+/** Centro del lindero; el marcador y la órbita giran alrededor de él */
+const centro = (pts: { lat: number; lng: number }[]) =>
+  pts.length >= 3
+    ? { lat: pts.reduce((s, p) => s + p.lat, 0) / pts.length, lng: pts.reduce((s, p) => s + p.lng, 0) / pts.length }
+    : undefined;
+
+const lotes = await Promise.all(
+  entradas
+    .filter((l) => l.data.mapa?.lat !== undefined || l.data.coordenadas)
+    .map(async (l) => {
+      const d = l.data;
+      const contorno = lindero(l.id);
+      const medio = centro(contorno);
+      const video = d.video_completo ?? (d.vuelo ? { src: d.vuelo.src, poster: d.vuelo.poster } : undefined);
+      return {
+        id: l.id,
+        d,
+        zona: zonaDe(d.municipio),
+        corto: nombreCorto(d.nombre),
+        whatsapp: d.contacto
+          ? `https://wa.me/${d.contacto.whatsapp}?text=${encodeURIComponent(
+              `Hola ${d.contacto.nombre}, vi el ${d.nombre} en AM Grupo Inmobiliario y quiero agendar una visita`,
+            )}`
+          : undefined,
+        ruta:
+          d.coordenadas && !d.demo
+            ? `https://www.google.com/maps/dir/?api=1&destination=${d.coordenadas.lat},${d.coordenadas.lon}`
+            : undefined,
+        video: video ? { src: url(video.src), poster: (await getImage({ src: video.poster, width: 1280 })).src } : undefined,
+        cliente: {
+          id: l.id,
+          nombre: nombreCorto(d.nombre),
+          municipio: d.municipio,
+          departamento: d.departamento,
+          vereda: d.vereda,
+          areaTxt: textoArea(d),
+          zona: zonaDe(d.municipio),
+          // Lotes reales del proyecto (parcelación); un predio sin unidades cuenta como 1
+          unidades: d.unidades.length || 1,
+          lat: medio?.lat ?? d.mapa?.lat ?? d.coordenadas!.lat,
+          lng: medio?.lng ?? d.mapa?.lon ?? d.coordenadas!.lon,
+          alt: d.mapa?.alt ?? 0,
+          camara: d.mapa?.camara,
+          area: d.area_m2,
+          precio: d.precio_cop ?? 0,
+          precioCorto: textoPrecioCorto(d),
+          estado: d.estado,
+          demo: d.demo,
+          recorrido: tieneRecorrido(d),
+          lindero: contorno,
+        },
+      };
+    }),
+);
+
+// Respaldo sin 3D: último cuadro del vuelo publicado como fondo de la llegada
+const conVuelo = entradas.find((l) => l.data.vuelo);
+const fondo = conVuelo ? await getImage({ src: conVuelo.data.vuelo!.final, width: 1920, format: 'webp' }) : undefined;
+
+/** "3 proyectos · 10 lotes" cuando hay parcelaciones; "1 lote" o "4 lotes" cuando cada proyecto es un solo lote */
+const conteoTxt = (proyectos: number, lotes: number) =>
+  lotes > proyectos
+    ? `${proyectos === 1 ? '1 proyecto' : `${proyectos} proyectos`} · ${lotes} lotes`
+    : lotes === 1
+      ? '1 lote'
+      : `${lotes} lotes`;
+const unidadesDe = (xs: { cliente: { unidades: number } }[]) => xs.reduce((s, l) => s + l.cliente.unidades, 0);
+
+const municipios = [...new Set(lotes.map((l) => l.d.municipio))].sort((a, b) => a.localeCompare(b, 'es'));
+const zonas = [...new Map(lotes.map((l) => [l.zona.id, l.zona])).values()];
+
+// Países y regiones con lotes: son los únicos con contorno y nombre en el globo (capas en public/capas/<nombre>.geojson).
+// El esquema no guarda el país: hoy todos los lotes están en Colombia
+const slugCapa = (n: string) => n.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().replace(/\s+/g, '-');
+const territorios = [
+  { nombre: 'Colombia', tipo: 'pais' as const },
+  ...[...new Set(lotes.map((l) => l.d.departamento))].map((nombre) => ({ nombre, tipo: 'region' as const })),
+]
+  .map((t) => ({ ...t, capa: slugCapa(t.nombre) }))
+  .filter((t) => existsSync(new URL(`../../public/capas/${t.capa}.geojson`, import.meta.url)));
+
+const config = {
+  key: import.meta.env.PUBLIC_GOOGLE_MAPS_KEY ?? '',
+  territorios,
+  capas: url('capas/'),
+  dibujo: import.meta.env.DEV,
+  guardar: url('__lindero'),
+  lotes: lotes.map((l) => l.cliente),
+};
+const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
 ---
 
 <Base
+  description="Navega Antioquia en 3D, vuela hasta cada lote y mira el terreno desde el aire antes de visitarlo"
   nav="overlay"
-  description="Lotes en Antioquia con recorrido en video, datos claros y contacto directo con el dueño"
-  image={og ? absoluteUrl(og.src) : undefined}
-  imageAlt={d?.nombre}
-  jsonLd={listado}
 >
-  <section
-    class:list={['stage', 'hero', { llegada: modo !== 'vuelo', 'intro-out': modo !== 'vuelo', sobrio: modo === 'estatico' }]}
-    id="hero"
-    data-stage
-    data-modo={modo}
-    aria-label={modo === 'vuelo' ? 'Vuelo hasta el lote' : 'Portada'}
-  >
-    {
-      modo !== 'estatico' && (
-        <video
-          id="hero-video"
-          src={url(heroSrc!)}
-          poster={heroPoster}
-          muted
-          playsinline
-          loop={modo === 'teaser'}
-          autoplay={modo === 'teaser'}
-          preload={modo === 'vuelo' ? 'metadata' : 'auto'}
-          data-duracion={vuelo?.duracion_s}
-          data-inicio={heroPoster}
-          data-final={heroFinal}
-          aria-hidden="true"
-        />
-      )
-    }
-    {modo === 'estatico' && <div class="bg bg-sobrio"></div>}
+  <div class="globo" data-globo data-vista="llegada">
+    <div class="lienzo" data-lienzo role="region" aria-label="Globo 3D con los lotes de AM Grupo Inmobiliario"></div>
+    {fondo && <img class="fondo" src={fondo.src} alt="" data-fondo hidden />}
 
-    <div class="intro" data-intro>
-      <h1>Tu próximo lote. <span>Visto desde el cielo.</span></h1>
-      <p>Lotes en Antioquia que recorres antes de visitarlos</p>
-      <div class="actions">
-        <a class="btn btn-primary" href={url('globo/')}>Explorar en 3D <Icon name="arrow-right" /></a>
-        <a class="btn btn-glass" href="#lotes">Ver los lotes</a>
-      </div>
+    <div class="etapa" data-etapa aria-live="polite">
+      <strong data-etapa-titulo></strong>
+      <span data-etapa-sub></span>
     </div>
 
-    {
-      modo !== 'estatico' && (
-        <div class="ctl">
-          <PauseButton videoId="hero-video" />
-        </div>
-      )
-    }
-
-    <div class="stage-ui">
-      <div class="wrap">
-        {
-          destacado && d ? (
-            <div class="arrive" data-arrive>
-              <div>
-                <h2>{d.nombre}</h2>
-                <div class="meta">
-                  <span>
-                    <Icon name="map-pin" />
-                    {d.municipio}, {d.departamento}
-                  </span>
-                  <span>{textoArea(d)}</span>
-                  <span>{textoPrecio(d)}</span>
-                </div>
-              </div>
-              <div class="actions">
-                {modo === 'vuelo' ? (
-                  <button type="button" class="btn btn-glass" data-repetir>
-                    <Icon name="arrow-counter-clockwise" />
-                    Ver de nuevo
-                  </button>
-                ) : (
-                  <a class="btn btn-glass" href="#lotes">Explorar lotes</a>
-                )}
-                <a class="btn btn-light" href={fichaUrl}>Conocer el lote</a>
-              </div>
-            </div>
-          ) : (
-            <div class="arrive solo">
-              <div class="actions">
-                <a class="btn btn-light" href="#lotes">Explorar lotes</a>
-              </div>
-            </div>
-          )
-        }
-        {
-          etapas.length > 0 && (
-            <div class="journey" style={`--n:${etapas.length}`} aria-hidden="true" data-journey>
-              {etapas.map((e) => (
-                <div data-a={e.a} data-b={e.b}>
-                  {e.nombre}
-                </div>
-              ))}
-            </div>
-          )
-        }
+    <section class="llegada" data-llegada aria-labelledby="llegada-titulo">
+      <h1 id="llegada-titulo">Tu próximo lote. <span>Visto desde el cielo.</span></h1>
+      <p>Recorre Colombia en 3D y conoce cada terreno antes de pisarlo</p>
+      <div class="acciones">
+        <button class="btn btn-primary" type="button" data-explorar>
+          Explorar lotes <Icon name="arrow-right" />
+        </button>
+        <a class="btn btn-glass" href={url('lotes/')}>Ver en lista</a>
       </div>
-    </div>
-  </section>
+      <p class="respaldo-aviso" data-respaldo-aviso hidden>
+        El 3D no está disponible en este navegador. Todos los lotes siguen en la lista
+      </p>
+    </section>
 
-  {
-    destacado && d && (
-      <section class="band wrap" aria-label="Lote destacado" id={resto.length ? undefined : 'lotes'}>
-        <div class="featured reveal">
-          <div class="media">
-            <a class="mlink" href={fichaUrl}>
-              <span class="sr-only">Conocer {d.nombre}</span>
-              {clip && clipPoster ? (
-                <video
-                  id="feat-video"
-                  src={url(clip.src)}
-                  poster={clipPoster}
-                  muted
-                  loop
-                  playsinline
-                  preload="none"
-                  aria-hidden="true"
-                />
-              ) : (
-                <div class="bg-sobrio fill"></div>
-              )}
-              {clip && (
-                <span class="tag">
-                  <Icon name="play-circle" />
-                  Recorrido en video
-                </span>
-              )}
-            </a>
-            {clip && clipPoster && <PauseButton videoId="feat-video" />}
-          </div>
-          <div class="info">
-            <h2 class="h-lg">{nombreCorto(d.nombre)}</h2>
-            <p class="lead">{d.resumen}</p>
-            <div class="facts">
-              {datos.map((x) => (
-                <div>
-                  <strong>{x.valor}</strong>
-                  <span>{x.etiqueta}</span>
-                </div>
-              ))}
-            </div>
-            <a class="btn btn-primary" href={fichaUrl}>
-              Conocer el lote
-              <Icon name="arrow-right" />
-            </a>
-          </div>
-        </div>
-      </section>
-    )
-  }
+    <button class="pildora omitir" type="button" data-omitir>
+      Omitir <Icon name="arrow-right" />
+    </button>
+    <button class="pildora lista-btn" type="button" data-lista-btn>
+      <Icon name="list" /> Lista
+    </button>
 
-  <section class="wrap band3d-wrap" aria-labelledby="titulo-3d">
-    <a class="band3d reveal" href={url('globo/')}>
-      <img src={img3d.src} alt="" loading="lazy" decoding="async" />
-      <div class="txt">
-        <h2 id="titulo-3d">Antioquia, en 3D.</h2>
-        <p>Vuela hasta cada lote, mira el terreno y su entorno, y abre la ficha sin salir del mapa</p>
-        <span class="btn btn-primary">Abrir el mapa 3D <Icon name="arrow-right" /></span>
-      </div>
-    </a>
-  </section>
-
-  {/* Con un solo lote la grilla queda vacía: se oculta y el ancla #lotes pasa al bloque destacado */}
-  <section class="wrap lotes" id={resto.length ? 'lotes' : undefined} aria-label="Lotes disponibles" hidden={resto.length === 0}>
-    <form class="toolbar" aria-label="Filtrar lotes" data-filtros>
-      <div class="thead">
-        <h2>Más lotes</h2>
-        <output class="count" aria-live="polite" data-count></output>
-      </div>
-      <div class="chips">
-        <fieldset class="municipios">
-          <legend class="sr-only">Municipio</legend>
-          <label class="chip"><input type="radio" name="municipio" value="" checked /><span>Todos</span></label>
-          {
-            municipios.map((m) => (
-              <label class="chip">
-                <input type="radio" name="municipio" value={m} />
-                <span>{m}</span>
-              </label>
-            ))
-          }
-        </fieldset>
-        <button type="button" class="chip more" aria-expanded="false" aria-controls="mas-filtros" data-mas>
-          <Icon name="sliders-horizontal" />
-          Filtros
-          <span class="n" data-mas-n hidden></span>
+    <aside class="rail" data-rail aria-label="Lotes">
+      <div class="rail-top">
+        <nav class="migas" aria-label="Ubicación en el globo">
+          <button type="button" class="miga" data-ir-antioquia><Icon name="globe-hemisphere-west" />Antioquia</button>
+          <span class="miga-zona" data-miga-zona hidden></span>
+        </nav>
+        <button class="icon-btn rail-toggle" type="button" data-rail-toggle aria-expanded="true" aria-label="Mostrar u ocultar la lista">
+          <Icon name="list" />
         </button>
       </div>
-      <div class="filters" id="mas-filtros" hidden data-panel>
-        <div class="field">
-          <label for="f-area">Área</label>
-          <select id="f-area" name="area">
-            <option value="">Cualquier área</option>
-            <option value="0-2500">Hasta 2.500 m²</option>
-            <option value="2500-5000">2.500 a 5.000 m²</option>
-            <option value="5000-">Más de 5.000 m²</option>
+
+      <div class="buscar">
+        <label class="sr" for="buscar-lote">Buscar lote por nombre o municipio</label>
+        <Icon name="magnifying-glass" />
+        <input id="buscar-lote" type="search" placeholder="Buscar lote" autocomplete="off" data-buscar />
+        <button class="filtros-btn" type="button" data-filtros-toggle aria-expanded="false" aria-controls="filtros">
+          <Icon name="sliders-horizontal" /><span>Filtros</span><span class="n" data-filtros-n hidden></span>
+        </button>
+      </div>
+
+      <div class="filtros" id="filtros" data-filtros hidden>
+        <label>
+          <span>Municipio</span>
+          <select data-f-municipio>
+            <option value="">Todos</option>
+            {municipios.map((m) => <option value={m}>{m}</option>)}
           </select>
-        </div>
-        <div class="field">
-          <label for="f-precio">Precio máximo</label>
-          <select id="f-precio" name="precio">
-            <option value="">Sin límite</option>
-            <option value="200000000">$200.000.000</option>
-            <option value="300000000">$300.000.000</option>
-            <option value="400000000">$400.000.000</option>
+        </label>
+        <label>
+          <span>Área mínima</span>
+          <select data-f-area>
+            <option value="">Cualquiera</option>
+            <option value="2000">2.000 m²</option>
+            <option value="3000">3.000 m²</option>
+            <option value="5000">5.000 m²</option>
           </select>
-        </div>
-        <label class="switch">
-          <input type="checkbox" name="recorrido" />
-          <span class="knob" aria-hidden="true"></span>
-          Solo con recorrido
+        </label>
+        <label>
+          <span>Precio máximo</span>
+          <select data-f-precio>
+            <option value="">Cualquiera</option>
+            <option value="250000000">$250 M</option>
+            <option value="300000000">$300 M</option>
+            <option value="400000000">$400 M</option>
+          </select>
+        </label>
+        <label class="check">
+          <input type="checkbox" data-f-recorrido />
+          <span>Solo con recorrido en video</span>
         </label>
       </div>
-    </form>
 
-    <div class="grid">
-      {destacado && <LoteCard lote={destacado} featured />}
-      {resto.map((lote) => <LoteCard lote={lote} />)}
-    </div>
+      <p class="conteo" data-conteo aria-live="polite">{conteoTxt(lotes.length, unidadesDe(lotes))}</p>
 
-    <div class="empty" hidden data-empty>
-      <p>Ningún lote coincide con estos filtros</p>
-      <button type="button" class="btn btn-ghost" data-reset>Quitar filtros</button>
-    </div>
-  </section>
+      <div class="lista" data-lista>
+        {
+          zonas.map((z) => (
+            <section class="grupo" data-grupo={z.id}>
+              <button type="button" class="grupo-titulo" data-ir-zona={z.id}>
+                {z.nombre}
+                <span data-grupo-n>{conteoTxt(lotes.filter((l) => l.zona.id === z.id).length, unidadesDe(lotes.filter((l) => l.zona.id === z.id)))}</span>
+              </button>
+              <ul>
+                {lotes
+                  .filter((l) => l.zona.id === z.id)
+                  .map((l) => (
+                    <li data-item={l.id}>
+                      <button type="button" class="item" data-abrir={l.id}>
+                        {l.d.portada ? (
+                          <Image src={l.d.portada} alt="" widths={[112, 224]} sizes="56px" class="thumb" />
+                        ) : (
+                          <span class="thumb vacio">
+                            <Icon name="mountains" />
+                          </span>
+                        )}
+                        <span class="item-txt">
+                          <strong>{l.corto}</strong>
+                          <span>{l.d.demo ? `${l.d.municipio}, demo` : l.d.municipio}</span>
+                        </span>
+                        <span class="item-num">
+                          <strong>{textoPrecioCorto(l.d)}</strong>
+                          <span>{textoArea(l.d)}</span>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            </section>
+          ))
+        }
+        <div class="vacio-lista" data-vacio hidden>
+          <p>Ningún lote cumple esos filtros</p>
+          <button class="btn btn-ghost btn-sm" type="button" data-limpiar>Limpiar filtros</button>
+        </div>
+      </div>
+    </aside>
+
+    <aside class="ficha" data-ficha aria-label="Ficha del lote" hidden>
+      {
+        lotes.map((l) => (
+          <article data-ficha-lote={l.id} hidden aria-labelledby={`ficha-${l.id}`}>
+            <button class="icon-btn cerrar" type="button" data-volver aria-label="Volver al mapa">
+              <Icon name="x" />
+            </button>
+            <div class="foto">
+              {l.d.portada ? (
+                <Image src={l.d.portada} alt={l.d.galeria[0]?.alt ?? l.d.nombre} widths={[400, 760]} sizes="(max-width: 767px) 100vw, 384px" />
+              ) : (
+                <div class="foto-vacia">
+                  <Icon name="image" />
+                  <span>Lote de demostración, sin fotos</span>
+                </div>
+              )}
+            </div>
+            <div class="cuerpo">
+              <p class="lugar">
+                <Icon name="map-pin" />
+                {[l.d.vereda, l.d.municipio].filter(Boolean).join(', ')}
+              </p>
+              <h2 id={`ficha-${l.id}`}>{l.corto}</h2>
+              <p class="tagline">{l.d.tagline}</p>
+
+              <div class="precio">
+                <strong>{textoPrecio(l.d)}</strong>
+                <span>{textoPrecioDetalle(l.d)}</span>
+              </div>
+
+              <dl class="cifras">
+                <div>
+                  <dt>{l.d.area_max_m2 ? 'Por lote' : 'Área'}</dt>
+                  <dd>{textoArea(l.d)}</dd>
+                </div>
+                {l.d.explanacion_m2 && (
+                  <div>
+                    <dt>Explanación</dt>
+                    <dd>{formatArea(l.d.explanacion_m2)}</dd>
+                  </div>
+                )}
+                <div>
+                  <dt>Estado</dt>
+                  <dd class:list={['estado', l.d.estado]}>{l.d.estado[0].toUpperCase() + l.d.estado.slice(1)}</dd>
+                </div>
+              </dl>
+
+              {l.d.atributos.length > 0 && (
+                <ul class="atributos">
+                  {l.d.atributos.slice(0, 4).map((a) => (
+                    <li>{a}</li>
+                  ))}
+                </ul>
+              )}
+
+              {l.d.demo && <p class="nota">Lote de demostración con datos de ejemplo</p>}
+              {l.d.coordenadas?.aproximadas && !l.d.demo && <p class="nota">Lindero y ubicación aproximados</p>}
+
+              <div class="ficha-acciones">
+                {l.whatsapp && (
+                  <a class="btn btn-primary" href={l.whatsapp} target="_blank" rel="noopener">
+                    <Icon name="whatsapp" />
+                    Agendar visita
+                  </a>
+                )}
+                <div class="fila">
+                  {l.video && (
+                    <button class="btn btn-ghost btn-sm" type="button" data-recorrido={l.video.src} data-poster={l.video.poster}>
+                      <Icon name="play-fill" />
+                      Recorrido
+                    </button>
+                  )}
+                  <a class="btn btn-ghost btn-sm" href={url(`lotes/${l.id}/`)}>
+                    Ficha completa
+                  </a>
+                  {l.ruta && (
+                    <a class="btn btn-ghost btn-sm" href={l.ruta} target="_blank" rel="noopener">
+                      <Icon name="navigation-arrow" />
+                      Cómo llegar
+                    </a>
+                  )}
+                </div>
+                <div class="fila">
+                  <button class="btn btn-ghost btn-sm" type="button" data-orbitar aria-pressed="false">
+                    <Icon name="arrows-clockwise" />
+                    <span data-orbitar-txt>Girar alrededor</span>
+                  </button>
+                  <button class="btn btn-ghost btn-sm" type="button" data-volver>
+                    <Icon name="arrow-left" />
+                    Volver al mapa
+                  </button>
+                </div>
+              </div>
+            </div>
+          </article>
+        ))
+      }
+      {
+        config.dibujo && (
+          <div class="dibujo" data-dibujo data-estado="listo">
+            <strong>Lindero (solo en tu computador)</strong>
+            <span data-dibujo-info />
+            <p class="ayuda">Clic en cada esquina del lote, en orden. Puedes girar y acercar mientras dibujas</p>
+            <div class="fila">
+              <button class="btn btn-ghost btn-sm" type="button" data-dibujo-accion="iniciar">
+                Dibujar lindero
+              </button>
+              <button class="btn btn-primary btn-sm solo-dibujo" type="button" data-dibujo-accion="guardar">
+                Guardar
+              </button>
+              <button class="btn btn-ghost btn-sm solo-dibujo" type="button" data-dibujo-accion="deshacer">
+                Deshacer
+              </button>
+              <button class="btn btn-ghost btn-sm solo-dibujo" type="button" data-dibujo-accion="borrar">
+                Borrar
+              </button>
+              <button class="btn btn-ghost btn-sm solo-dibujo" type="button" data-dibujo-accion="cancelar">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )
+      }
+    </aside>
+
+    <dialog class="video" data-video aria-label="Recorrido del lote">
+      <button class="icon-btn" type="button" data-video-cerrar aria-label="Cerrar el recorrido"><Icon name="x" /></button>
+      <video controls playsinline preload="none" data-video-el></video>
+    </dialog>
+  </div>
+
+  <script type="application/json" id="globo-config" set:html={configJson} />
 </Base>
 
 <script>
-  import { initPauseButtons, playWhenVisible } from '../lib/video-controls';
-
-  initPauseButtons();
-  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  // Navegación transparente sobre el vuelo y sólida al pasar la portada
-  const stage = document.querySelector<HTMLElement>('[data-stage]')!;
-  const nav = document.querySelector<HTMLElement>('[data-nav]')!;
-  new IntersectionObserver(([e]) => nav.classList.toggle('solid', !e.isIntersecting), {
-    rootMargin: '-64px 0px 0px 0px',
-  }).observe(stage);
-
-  // Vuelo: frase de entrada, tarjeta de llegada y línea de etapas siguen el tiempo del video.
-  // Solo hay requestAnimationFrame mientras el video corre; no hay listeners de scroll
-  const v = document.getElementById('hero-video') as HTMLVideoElement | null;
-  if (v && stage.dataset.modo === 'vuelo') {
-    const dur = Number(v.dataset.duracion);
-    const pasos = [...stage.querySelectorAll<HTMLElement>('[data-journey] > div')];
-    const pintar = (t: number, fin = false) => {
-      stage.classList.toggle('intro-out', fin || t > dur - 4.5);
-      stage.classList.toggle('llegada', fin || t > dur - 4.5);
-      for (const p of pasos) {
-        const a = Number(p.dataset.a);
-        const b = Number(p.dataset.b);
-        const avance = fin ? 1 : Math.max(0, Math.min(1, (t - a) / (b - a)));
-        p.style.setProperty('--p', `${avance * 100}%`);
-        p.classList.toggle('on', fin || t >= a);
-      }
-    };
-    const sync = () => pintar(v.currentTime, v.ended);
-    let raf = 0;
-    const bucle = () => {
-      sync();
-      if (!v.paused && !v.ended) raf = requestAnimationFrame(bucle);
-    };
-    v.addEventListener('play', () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(bucle);
-    });
-    for (const ev of ['pause', 'ended', 'seeked']) v.addEventListener(ev, sync);
-
-    // Sin video (movimiento reducido, reproducción bloqueada o sin soporte): cuadro final con la tarjeta visible
-    const mostrarFinal = () => {
-      if (v.dataset.final) v.poster = v.dataset.final;
-      pintar(dur, true);
-    };
-    v.addEventListener('error', mostrarFinal);
-
-    if (reduce) {
-      v.pause();
-      mostrarFinal();
-    } else {
-      v.preload = 'auto';
-      v.play().catch(mostrarFinal);
-    }
-
-    document.querySelector('[data-repetir]')?.addEventListener('click', () => {
-      if (v.dataset.inicio) v.poster = v.dataset.inicio;
-      v.currentTime = 0;
-      pintar(0);
-      v.play().catch(mostrarFinal);
-    });
-  }
-
-  // Clip del bloque destacado: solo se mueve cuando se ve y nadie lo pausó
-  const fv = document.getElementById('feat-video') as HTMLVideoElement | null;
-  if (fv) playWhenVisible(fv);
-
-  const reveal = new IntersectionObserver(
-    (es) =>
-      es.forEach((e) => {
-        if (!e.isIntersecting) return;
-        e.target.classList.add('in');
-        reveal.unobserve(e.target);
-      }),
-    { threshold: 0.2 },
-  );
-  document.querySelectorAll('.reveal').forEach((el) => reveal.observe(el));
-
-  // Filtros. La tarjeta del lote destacado vive en la grilla oculta: solo aparece si hay filtros activos y coincide,
-  // así "solo con recorrido" o un municipio encuentran el destacado aunque ya se vea arriba
-  const form = document.querySelector<HTMLFormElement>('[data-filtros]')!;
-  const panel = document.querySelector<HTMLElement>('[data-panel]')!;
-  const btnMas = document.querySelector<HTMLButtonElement>('[data-mas]')!;
-  const nMas = document.querySelector<HTMLElement>('[data-mas-n]')!;
-  btnMas.addEventListener('click', () => {
-    const abrir = panel.hidden;
-    panel.hidden = !abrir;
-    btnMas.setAttribute('aria-expanded', String(abrir));
-  });
-  const cards = [...document.querySelectorAll<HTMLElement>('[data-lote]')];
-  const count = document.querySelector<HTMLOutputElement>('[data-count]')!;
-  const empty = document.querySelector<HTMLElement>('[data-empty]')!;
-
-  function aplicar() {
-    const f = new FormData(form);
-    const municipio = String(f.get('municipio') ?? '');
-    const areaSel = String(f.get('area') ?? '');
-    const precioSel = String(f.get('precio') ?? '');
-    const soloRecorrido = f.get('recorrido') === 'on';
-    const activos = Boolean(municipio || areaSel || precioSel || soloRecorrido);
-    const [areaMin, areaMax] = areaSel.split('-').map((x) => (x ? Number(x) : undefined));
-    const precioMax = Number(precioSel) || Infinity;
-    let visibles = 0;
-    let unidades = 0;
-    for (const card of cards) {
-      const area = Number(card.dataset.area);
-      const coincide =
-        (!municipio || card.dataset.municipio === municipio) &&
-        (areaMin === undefined || area >= areaMin) &&
-        (areaMax === undefined || area < areaMax) &&
-        Number(card.dataset.precio) <= precioMax &&
-        (!soloRecorrido || card.dataset.recorrido === '1');
-      const ok = coincide && (activos || !('featured' in card.dataset));
-      card.hidden = !ok;
-      if (ok) {
-        visibles++;
-        unidades += Number(card.dataset.unidades) || 1;
-      }
-    }
-    // "2 proyectos · 9 lotes" cuando hay parcelaciones; si no, solo el número de lotes
-    const lotesTxt = unidades === 1 ? '1 lote' : `${unidades} lotes`;
-    count.value =
-      unidades > visibles ? `${visibles === 1 ? '1 proyecto' : `${visibles} proyectos`} · ${lotesTxt}` : lotesTxt;
-    empty.hidden = visibles > 0;
-    // Filtros dentro del panel: el botón muestra cuántos hay activos
-    const enPanel = [areaSel, precioSel, soloRecorrido].filter(Boolean).length;
-    nMas.hidden = enPanel === 0;
-    nMas.textContent = String(enPanel);
-  }
-
-  form.addEventListener('change', aplicar);
-  document.querySelector('[data-reset]')!.addEventListener('click', () => {
-    form.reset();
-    aplicar();
-    form.querySelector<HTMLInputElement>('input[name="municipio"]')?.focus();
-  });
-  // Enlaces del pie (?municipio=Guarne#lotes) llegan con el municipio elegido
-  const pedido = new URLSearchParams(location.search).get('municipio');
-  const chip = [...form.querySelectorAll<HTMLInputElement>('input[name="municipio"]')].find((i) => i.value === pedido);
-  if (chip) chip.checked = true;
-  aplicar();
+  import { iniciarGlobo } from '../lib/globo';
+  iniciarGlobo();
 </script>
 
 <style>
-  .lg {
-    display: inline;
+  /* Capas propias de la página: globo 0, degradado 1, lista y ficha 20, llegada 25 (nav global 30) */
+  :global(body:has([data-globo])) {
+    overflow: hidden;
   }
-  .sm {
+  :global(body:has([data-globo]) .site-footer) {
     display: none;
   }
+  .globo {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+  }
+  .lienzo {
+    position: absolute;
+    inset: 0;
+  }
+  .lienzo :global(gmp-map-3d) {
+    width: 100%;
+    height: 100%;
+  }
+  .sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 
-  /* Portada: lado derecho libre para la marca de Google Earth del video */
-  /* Portada: título y acciones abajo a la izquierda, sobre un velo; queda hasta la llegada al lote */
-  .intro {
+  /* Llegada: texto abajo a la izquierda, el planeta gira detrás. Se deja libre la franja de atribución de Google */
+  .llegada {
     position: absolute;
-    inset: 0;
-    z-index: 3;
+    left: var(--gutter);
+    bottom: 96px;
+    z-index: 25;
+    max-width: 720px;
     display: grid;
-    align-content: end;
-    justify-items: start;
     gap: 18px;
-    max-width: calc(var(--max) + 2 * var(--gutter));
-    margin: 0 auto;
-    padding: 0 var(--gutter) 190px;
-    text-shadow: 0 2px 30px rgb(0 0 0 / 0.45);
-    transition: opacity 1.2s var(--ease), visibility 1.2s;
-    pointer-events: none;
+    transition: opacity 0.6s var(--ease), transform 0.6s var(--ease), visibility 0.6s;
   }
-  .intro > * {
-    pointer-events: auto;
-    max-width: 760px;
-  }
-  .hero::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    pointer-events: none;
-    background:
-      linear-gradient(180deg, rgb(0 0 0 / 0.45) 0%, rgb(0 0 0 / 0) 22%),
-      linear-gradient(90deg, rgb(11 12 13 / 0.72) 0%, rgb(11 12 13 / 0) 58%),
-      linear-gradient(0deg, rgb(11 12 13 / 0.6) 0%, rgb(11 12 13 / 0) 40%);
-  }
-  .intro h1 {
-    font-size: clamp(2.75rem, 5.4vw, 5rem);
-    line-height: 1.02;
+  .llegada h1 {
+    font-size: clamp(2.4rem, 5vw, 4rem);
+    line-height: 1.04;
     letter-spacing: -0.045em;
     padding-bottom: 2px;
   }
-  .intro h1 span {
+  .llegada h1 span {
     display: block;
-    color: rgb(244 245 243 / 0.58);
+    color: rgb(244 245 243 / 0.55);
   }
-  .intro p {
-    font-size: clamp(1.0625rem, 1.5vw, 1.25rem);
-    color: rgb(255 255 255 / 0.85);
-  }
-  .intro .actions {
-    margin-top: 8px;
-    text-shadow: none;
-  }
-  .intro-out .intro {
-    opacity: 0;
-    visibility: hidden;
-  }
-  .ctl {
-    position: absolute;
-    right: var(--gutter);
-    top: calc(var(--nav-h) + 24px);
-    z-index: 3;
-  }
-  .ctl :global(.pause) {
-    position: static;
-  }
-
-  .arrive {
-    display: grid;
-    gap: 22px;
-    max-width: 760px;
-    opacity: 0;
-    visibility: hidden;
-    transform: translateY(18px);
-    transition: opacity 0.9s var(--ease), transform 0.9s var(--ease), visibility 0s 0.9s;
-  }
-  .llegada .arrive {
-    opacity: 1;
-    visibility: visible;
-    transform: none;
-    transition: opacity 0.9s var(--ease), transform 0.9s var(--ease), visibility 0s;
-  }
-  .arrive h2 {
-    font-size: clamp(2.2rem, 5vw, 4.5rem);
-    line-height: 1;
-  }
-  .meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 22px;
-    margin-top: 14px;
+  .llegada > p {
     font-size: 1.125rem;
-    color: rgb(255 255 255 / 0.88);
+    color: rgb(244 245 243 / 0.8);
+    max-width: 44ch;
   }
-  .meta span {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .actions {
+  .llegada .acciones {
     display: flex;
     flex-wrap: wrap;
     gap: 12px;
-  }
-
-  .journey {
-    display: grid;
-    grid-template-columns: repeat(var(--n), 1fr);
-    gap: 8px;
-    max-width: 74%;
-    margin-top: 36px;
-  }
-  .journey div {
-    font-size: 0.8125rem;
-    color: rgb(255 255 255 / 0.6);
-    transition: color 0.4s;
-  }
-  .journey div::before {
-    content: '';
-    display: block;
-    height: 3px;
-    margin-bottom: 10px;
-    border-radius: 3px;
-    background: linear-gradient(90deg, #fff var(--p, 0%), rgb(255 255 255 / 0.22) var(--p, 0%));
-  }
-  .journey div.on {
-    color: #fff;
-  }
-
-  /* Destacado */
-  .featured {
-    display: grid;
-    grid-template-columns: 1.35fr 1fr;
-    gap: 56px;
-    align-items: center;
-  }
-  .media {
-    position: relative;
-    border-radius: var(--radius);
-    overflow: hidden;
-    aspect-ratio: 16 / 10;
-    background: var(--card);
-  }
-  .mlink {
-    position: absolute;
-    inset: 0;
-    display: block;
-  }
-  .media video,
-  .media .fill {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  .tag {
-    position: absolute;
-    left: 18px;
-    top: 18px;
-    display: inline-flex;
-    gap: 6px;
-    align-items: center;
-    padding: 6px 12px;
-    border-radius: 999px;
-    background: rgb(0 0 0 / 0.55);
-    font-size: 0.8125rem;
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-  }
-  .info .lead {
-    max-width: 40ch;
-    margin-top: 22px;
-    color: var(--muted);
-    font-size: clamp(1.125rem, 1.6vw, 1.375rem);
-    line-height: 1.4;
-  }
-  .facts {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 26px 32px;
-    margin: 34px 0;
-  }
-  .facts strong {
-    display: block;
-    font-size: clamp(1.6rem, 2.2vw, 2rem);
-    font-weight: 600;
-    letter-spacing: -0.03em;
-    line-height: 1.15;
-  }
-  .facts span {
-    color: var(--muted);
-  }
-
-  /* Antioquia, en 3D: una pieza grande que lleva al globo */
-  .band3d-wrap {
-    padding-bottom: 120px;
-  }
-  .band3d {
-    position: relative;
-    display: block;
-    height: clamp(420px, 42vw, 580px);
-    border-radius: 28px;
-    overflow: hidden;
-    isolation: isolate;
-    background: var(--card);
-  }
-  .band3d img,
-  .band3d .fill {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transition: transform 1.2s var(--ease);
-  }
-  .band3d:hover img {
-    transform: scale(1.03);
-  }
-  .band3d::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, rgb(11 12 13 / 0.92) 0%, rgb(11 12 13 / 0.55) 42%, rgb(11 12 13 / 0) 72%);
-  }
-  .band3d .txt {
-    position: absolute;
-    z-index: 1;
-    left: 56px;
-    top: 50%;
-    transform: translateY(-50%);
-    max-width: 440px;
-    display: grid;
-    justify-items: start;
-    gap: 16px;
-  }
-  .band3d h2 {
-    font-size: clamp(2.25rem, 3.6vw, 3.25rem);
-    line-height: 1.04;
-    letter-spacing: -0.04em;
-  }
-  .band3d p {
-    font-size: 1.125rem;
-    line-height: 1.45;
-    color: rgb(244 245 243 / 0.82);
-  }
-  .band3d .btn {
     margin-top: 6px;
   }
+  .llegada [hidden],
+  .fondo[hidden] {
+    display: none;
+  }
+  .fondo {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .llegada .respaldo-aviso {
+    font-size: 0.9375rem;
+    color: var(--muted);
+  }
+  [data-vista]:not([data-vista='llegada']) .llegada {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(16px);
+    pointer-events: none;
+  }
+  .globo::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background: linear-gradient(90deg, rgb(11 12 13 / 0.72) 0%, rgb(11 12 13 / 0) 58%);
+    transition: opacity 0.8s var(--ease);
+  }
+  [data-vista]:not([data-vista='llegada'])::before {
+    opacity: 0;
+  }
+  /* Velo superior: la marca y el menú se leen sobre cualquier imagen */
+  .globo::after {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    height: 120px;
+    z-index: 1;
+    pointer-events: none;
+    background: linear-gradient(180deg, rgb(11 12 13 / 0.6) 0%, rgb(11 12 13 / 0) 100%);
+  }
 
-  /* Lotes y filtros */
-  .lotes {
-    scroll-margin-top: 24px;
+  /* Títulos del vuelo al lote: centrados abajo, como en el video; la lista y la ficha esperan a que termine */
+  .etapa {
+    position: absolute;
+    left: 50%;
+    bottom: 104px;
+    z-index: 22;
+    display: grid;
+    justify-items: center;
+    gap: 6px;
+    width: min(92vw, 820px);
+    text-align: center;
+    pointer-events: none;
+    opacity: 0;
+    transform: translate(-50%, 10px);
+    transition: opacity 0.5s var(--ease), transform 0.6s var(--ease);
+    text-shadow: 0 2px 28px rgb(0 0 0 / 0.55);
   }
-  .toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: end;
-    gap: 20px 16px;
-    padding: 0 0 28px;
+  .etapa.visible {
+    opacity: 1;
+    transform: translate(-50%, 0);
   }
-  .chips,
-  .municipios {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
+  .etapa strong {
+    font-size: clamp(2rem, 4.4vw, 3.5rem);
+    font-weight: 600;
+    line-height: 1.05;
+    letter-spacing: -0.04em;
   }
-  .municipios {
-    margin: 0;
-    padding: 0;
-    border: 0;
+  .etapa span {
+    font-size: clamp(0.9375rem, 1.4vw, 1.125rem);
+    color: rgb(244 245 243 / 0.75);
   }
-  .chip {
-    position: relative;
+  [data-cine] .rail,
+  [data-cine] .ficha {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  /* Botones en píldora sobre el globo: Omitir (durante el vuelo) y Lista (tablet, con la ficha abierta) */
+  .pildora {
+    position: absolute;
+    z-index: 26;
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    height: 44px;
-    padding: 0 18px;
-    border: 1px solid transparent;
+    height: 40px;
+    padding: 0 16px;
+    border: 1px solid var(--line);
     border-radius: 999px;
-    background: var(--card);
+    background: rgb(17 19 20 / 0.84);
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 12px 32px rgb(0 0 0 / 0.35);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.4s var(--ease), transform 0.4s var(--ease), visibility 0.4s, background 0.2s;
+  }
+  .pildora:hover {
+    background: rgb(36 38 40 / 0.92);
+  }
+  .pildora:active {
+    transform: translateY(1px);
+  }
+  .pildora:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .omitir {
+    left: 50%;
+    bottom: 52px;
+    translate: -50% 0;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+  [data-cine] .omitir {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+  .lista-btn {
+    display: none;
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .pildora {
+      background: var(--bg-2);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+  }
+
+  /* Superficie flotante compartida por la lista y la ficha */
+  .rail,
+  .ficha {
+    position: absolute;
+    z-index: 20;
+    top: calc(var(--nav-h) + 8px);
+    background: rgb(17 19 20 / 0.84);
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 24px 60px rgb(0 0 0 / 0.35);
+    transition: opacity 0.5s var(--ease), transform 0.5s var(--ease), visibility 0.5s;
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .rail,
+    .ficha {
+      background: var(--bg-2);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+  }
+
+  /* Lista: a la izquierda, termina antes del logo de Google */
+  .rail {
+    left: 16px;
+    bottom: 64px;
+    width: 340px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+  }
+  [data-vista='llegada'] .rail {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateX(-16px);
+  }
+  .rail-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .migas {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+    font-size: 0.875rem;
+  }
+  .miga {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.08);
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+  }
+  .miga:hover {
+    background: rgb(255 255 255 / 0.14);
+  }
+  .miga-zona {
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .miga-zona::before {
+    content: '/';
+    margin-right: 6px;
+    color: rgb(255 255 255 / 0.3);
+  }
+  .rail-toggle {
+    display: none;
+    width: 40px;
+    height: 40px;
+  }
+
+  .buscar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 46px;
+    padding: 0 5px 0 14px;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.07);
+    border: 1px solid transparent;
+    color: var(--muted);
+  }
+  .buscar:focus-within {
+    border-color: rgb(183 143 84 / 0.6);
+  }
+  .buscar input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    border: 0;
+    background: transparent;
     color: var(--text);
     font: inherit;
     font-size: 0.9375rem;
+    outline: none;
+  }
+  .buscar input::placeholder {
+    color: #8d938f;
+  }
+  .filtros-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.08);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.8125rem;
     cursor: pointer;
-    transition: background 0.2s, color 0.2s;
   }
-  .chip input {
-    position: absolute;
-    opacity: 0;
-    pointer-events: none;
+  .filtros-btn[aria-expanded='true'] {
+    background: rgb(255 255 255 / 0.16);
   }
-  .chip:has(input:checked) {
-    background: var(--text);
-    color: var(--bg);
-    font-weight: 500;
-  }
-  .chip:has(input:focus-visible) {
-    outline: 2px solid var(--accent);
-    outline-offset: 3px;
-  }
-  .chip.more {
-    background: transparent;
-    border-color: rgb(255 255 255 / 0.18);
-  }
-  .chip.more[aria-expanded='true'] {
-    background: var(--card);
-  }
-  .chip .n {
-    min-width: 20px;
-    height: 20px;
-    padding: 0 6px;
+  .filtros-btn .n {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
     border-radius: 999px;
     background: var(--accent);
     color: var(--accent-ink);
-    font-size: 0.75rem;
+    font-size: 0.6875rem;
     font-weight: 600;
-    line-height: 20px;
+    line-height: 18px;
     text-align: center;
   }
-  .filters[hidden] {
+  .filtros {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .filtros[hidden] {
     display: none;
   }
-  .filters {
-    flex-basis: 100%;
-    justify-content: flex-end;
-  }
-  .thead {
+  .filtros label {
     display: grid;
     gap: 4px;
-    margin-right: auto;
-  }
-  .thead h2 {
-    font-size: clamp(1.75rem, 2.6vw, 2.25rem);
-  }
-  .count {
+    font-size: 0.75rem;
     color: var(--muted);
-    font-size: 0.9375rem;
   }
-  .filters {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: end;
-    gap: 14px;
+  .filtros label:first-child {
+    grid-column: 1 / -1;
   }
-  .field {
-    display: grid;
-    gap: 6px;
-  }
-  .field label {
-    color: var(--muted);
-    font-size: 0.8125rem;
-  }
-  select {
-    height: 46px;
-    min-width: 170px;
-    padding: 0 14px;
-    border: 1px solid rgb(255 255 255 / 0.18);
-    border-radius: 999px;
+  .filtros select {
+    height: 40px;
+    padding: 0 10px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
     background: var(--bg-2);
     color: var(--text);
     font: inherit;
-    font-size: 0.9375rem;
+    font-size: 0.875rem;
   }
-  .switch {
+  .filtros .check {
+    grid-column: 1 / -1;
     display: flex;
     align-items: center;
     gap: 10px;
-    height: 46px;
-    padding: 0 16px;
-    border-radius: 999px;
-    background: var(--card);
+    min-height: 36px;
+    color: var(--text);
+    font-size: 0.875rem;
+  }
+  .filtros .check input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent);
+  }
+
+  .conteo {
+    font-size: 0.8125rem;
+    color: var(--muted);
+    padding: 0 4px;
+  }
+  .lista {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    margin: 0 -6px;
+    padding: 0 6px;
+    scrollbar-width: thin;
+  }
+  .grupo + .grupo {
+    margin-top: 14px;
+  }
+  .grupo[hidden],
+  .grupo li[hidden] {
+    display: none;
+  }
+  .grupo-titulo {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    padding: 6px 4px;
+    border: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
     font-size: 0.9375rem;
+    font-weight: 600;
+    text-align: left;
     cursor: pointer;
   }
-  .switch input {
-    position: absolute;
-    opacity: 0;
-    pointer-events: none;
+  .grupo-titulo span {
+    color: var(--muted);
+    font-weight: 400;
+    font-size: 0.8125rem;
   }
-  .knob {
-    position: relative;
-    width: 36px;
-    height: 22px;
-    border-radius: 999px;
-    background: #4a5050;
+  .grupo-titulo:hover {
+    color: var(--accent);
+  }
+  .grupo ul {
+    list-style: none;
+    margin: 2px 0 0;
+    padding: 0;
+    display: grid;
+    gap: 2px;
+  }
+  .item {
+    display: grid;
+    grid-template-columns: 56px 1fr auto;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 8px;
+    border: 0;
+    border-radius: 14px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
     transition: background 0.2s;
   }
-  .knob::after {
-    content: '';
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: #fff;
-    transition: transform 0.2s var(--ease);
+  .item:hover,
+  .item[aria-current='true'] {
+    background: rgb(255 255 255 / 0.07);
   }
-  .switch input:checked + .knob {
-    background: var(--accent);
+  .item[aria-current='true'] {
+    box-shadow: inset 0 0 0 1px rgb(183 143 84 / 0.55);
   }
-  .switch input:checked + .knob::after {
-    transform: translateX(14px);
+  .thumb {
+    width: 56px;
+    height: 56px;
+    border-radius: 12px;
+    object-fit: cover;
   }
-  .switch:has(input:focus-visible) {
-    outline: 2px solid var(--accent);
-    outline-offset: 3px;
-  }
-  .grid {
+  .thumb.vacio {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 24px;
-    padding-bottom: 120px;
+    place-items: center;
+    background: var(--card);
+    color: rgb(183 143 84 / 0.6);
+    font-size: 1.25rem;
   }
-  .empty {
+  .item-txt,
+  .item-num {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  .item-txt strong,
+  .item-num strong {
+    font-size: 0.9375rem;
+    font-weight: 600;
+  }
+  .item-txt strong {
+    line-height: 1.25;
+    text-wrap: balance;
+  }
+  .item-txt span,
+  .item-num span {
+    font-size: 0.8125rem;
+    color: var(--muted);
+  }
+  .item-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .vacio-lista {
     display: grid;
     justify-items: start;
-    gap: 16px;
-    padding: 24px 0 120px;
+    gap: 12px;
+    padding: 18px 4px;
     color: var(--muted);
-    font-size: 1.125rem;
   }
-  .empty[hidden] {
+  .vacio-lista[hidden] {
     display: none;
   }
 
+  /* Ficha: a la derecha, deja libres la brújula y los controles de Google abajo a la derecha */
+  .ficha {
+    right: 16px;
+    width: 384px;
+    max-height: calc(100dvh - var(--nav-h) - 128px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+  .ficha[hidden] {
+    display: block;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateX(16px);
+    pointer-events: none;
+  }
+  .ficha article {
+    position: relative;
+  }
+  .ficha article[hidden] {
+    display: none;
+  }
+  .cerrar {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 1;
+    width: 40px;
+    height: 40px;
+    background: rgb(11 12 13 / 0.55);
+  }
+  .foto {
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: var(--radius) var(--radius) 0 0;
+    background: var(--card);
+  }
+  .foto img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .foto-vacia {
+    height: 100%;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+  .foto-vacia :global(.icon) {
+    width: 28px;
+    height: 28px;
+    color: rgb(183 143 84 / 0.6);
+  }
+  .cuerpo {
+    display: grid;
+    gap: 14px;
+    padding: 18px 20px 20px;
+  }
+  .lugar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8125rem;
+    color: var(--muted);
+  }
+  .cuerpo h2 {
+    font-size: 1.75rem;
+    line-height: 1.08;
+    margin-top: -6px;
+  }
+  .tagline {
+    color: rgb(244 245 243 / 0.8);
+    font-size: 0.9375rem;
+    margin-top: -6px;
+  }
+  .precio {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+  }
+  .precio strong {
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .precio span {
+    font-size: 0.8125rem;
+    color: var(--muted);
+  }
+  .cifras {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+    gap: 1px;
+    margin: 0;
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--line);
+  }
+  .cifras div {
+    padding: 10px 12px;
+    background: rgb(17 19 20 / 0.96);
+  }
+  .cifras dt {
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+  .cifras dd {
+    margin: 2px 0 0;
+    white-space: nowrap;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .estado.disponible {
+    color: var(--accent);
+  }
+  .estado.reservado {
+    color: var(--muted);
+  }
+  .atributos {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .atributos li {
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.07);
+    font-size: 0.8125rem;
+  }
+  .nota {
+    font-size: 0.8125rem;
+    color: var(--muted);
+  }
+  .ficha-acciones {
+    display: grid;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .fila {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .ficha-acciones .fila .btn {
+    flex: 1 1 auto;
+  }
+  [data-orbitar][aria-pressed='true'] {
+    background: rgb(183 143 84 / 0.18);
+    color: var(--accent);
+  }
+
+  .dibujo {
+    display: grid;
+    gap: 8px;
+    margin: 0 20px 20px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+    font-size: 0.875rem;
+  }
+  .dibujo .ayuda,
+  .dibujo .solo-dibujo {
+    display: none;
+  }
+  .dibujo[data-estado='dibujando'] .ayuda {
+    display: block;
+  }
+  .dibujo[data-estado='dibujando'] .solo-dibujo {
+    display: inline-flex;
+  }
+  .dibujo[data-estado='dibujando'] [data-dibujo-accion='iniciar'] {
+    display: none;
+  }
+  .dibujo .ayuda {
+    color: var(--muted);
+  }
+
+  .video {
+    width: min(1100px, 94vw);
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius);
+    background: #050505;
+    overflow: hidden;
+  }
+  .video::backdrop {
+    background: rgb(11 12 13 / 0.86);
+  }
+  .video video {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+  }
+  .video .icon-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 1;
+  }
+
+  /* Tablet: superficies más angostas y un solo panel a la vez (con un lote abierto, la ficha reemplaza a la lista) */
   @media (max-width: 1100px) {
-    .featured {
-      grid-template-columns: 1fr;
-      gap: 32px;
+    .rail {
+      width: 300px;
     }
-    .band3d::after {
-      background: linear-gradient(0deg, rgb(11 12 13 / 0.94) 0%, rgb(11 12 13 / 0.5) 48%, rgb(11 12 13 / 0) 78%);
+    .ficha {
+      width: 340px;
     }
-    .band3d .txt {
-      top: auto;
-      bottom: 40px;
-      left: 36px;
-      right: 36px;
-      transform: none;
-    }
-    .filters {
-      justify-content: flex-start;
-    }
-    .ctl {
-      right: var(--gutter);
+    [data-vista='lote'] .rail {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transform: translateX(-16px);
     }
   }
-  @media (max-width: 700px) {
-    .lg {
+  /* El botón Lista vive a la izquierda de la ficha, lejos de la brújula y la atribución de Google */
+  @media (min-width: 768px) and (max-width: 1100px) {
+    [data-vista='lote']:not([data-cine]) .lista-btn {
+      display: inline-flex;
+      top: calc(var(--nav-h) + 8px);
+      right: 368px;
+    }
+  }
+  /* Pantallas bajas o medianas: la ficha prioriza precio y acciones */
+  @media (max-width: 1100px), (max-height: 820px) {
+    .ficha .atributos {
       display: none;
     }
-    .sm {
-      display: inline;
+  }
+
+  /* Celular: la lista y la ficha son hojas inferiores, por encima de la franja de atribución de Google */
+  @media (max-width: 767px) {
+    .llegada {
+      left: 16px;
+      right: 16px;
+      bottom: 72px;
     }
-    .journey {
-      max-width: 100%;
-      margin-top: 28px;
-      gap: 6px;
-    }
-    .journey div {
-      font-size: 0.6875rem;
-    }
-    .meta {
+    .llegada > p {
       font-size: 1rem;
     }
-    .grid {
-      grid-template-columns: 1fr;
-      padding-bottom: 72px;
+    .globo::before {
+      background: linear-gradient(0deg, rgb(11 12 13 / 0.82) 0%, rgb(11 12 13 / 0) 62%);
     }
-    .filters,
-    .field {
-      width: 100%;
+    .rail,
+    .ficha {
+      top: auto;
+      left: 8px;
+      right: 8px;
+      bottom: 40px;
+      width: auto;
     }
-    .field {
-      flex: 1 1 100%;
+    .rail {
+      max-height: 46dvh;
     }
-    select {
-      width: 100%;
-      min-width: 0;
+    .rail[data-plegado] > :not(.rail-top) {
+      display: none;
     }
-    .switch {
-      width: 100%;
+    .rail-toggle {
+      display: grid;
     }
-    .facts {
-      gap: 22px 20px;
+    [data-vista='llegada'] .rail,
+    .ficha[hidden] {
+      transform: translateY(24px);
+    }
+    /* En celular la ficha es corta: el 3D es la imagen y el lote queda visible encima */
+    .ficha {
+      max-height: 52dvh;
+    }
+    .ficha .foto,
+    .ficha .tagline,
+    .ficha .atributos {
+      display: none;
+    }
+    .ficha .cuerpo {
+      padding-top: 16px;
+    }
+    .ficha .lugar,
+    .ficha .cuerpo h2 {
+      padding-right: 48px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .etapa,
+    .llegada,
+    .rail,
+    .ficha,
+    .globo::before {
+      transition: none;
     }
   }
 </style>

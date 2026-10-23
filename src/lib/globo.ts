@@ -56,11 +56,8 @@ declare global {
 const DORADO = '#b78f54';
 const TINTA = '#14100a';
 const GRIS = '#9aa09c';
-// Distancias de cámara: lotes uno a uno (más lejos se agrupan por región), nombre de región, municipios y país
+// Distancia de cámara desde la que los lotes se ven uno a uno (más lejos se agrupan por región)
 const UMBRAL_LOTES = 450_000;
-const UMBRAL_NOMBRE_REGION = 120_000;
-const UMBRAL_MUNICIPIOS = 160_000;
-const UMBRAL_PAIS = 900_000;
 // Municipio al que vuela "Explorar lotes" desde la llegada
 const MUNICIPIO_ENTRADA = 'Guarne';
 // Lotes a menos de 1,5 km entre sí comparten un pin (con el número) hasta que la cámara baja de 25 km
@@ -376,18 +373,29 @@ export async function iniciarGlobo() {
     else el[viejo] = puntos;
   };
 
-  // Capas de contexto: contorno y nombre de cada país y región con lotes; municipios solo de cerca
-  const capa = async (nombre: string, color: string, ancho: number) => {
-    const geo = await fetch(`${cfg.capas}${nombre}.geojson`).then((r) => r.json());
-    const anillos: LatLng[][] = geo.features.flatMap((f: any) =>
-      f.geometry.coordinates.map((poly: number[][][]) => poly[0].map(([lng, lat]) => ({ lat, lng }))),
-    );
+  // Capas de contexto: contorno y nombre de cada país, región y municipio con lotes. Cada una aparece solo en su
+  // escala (desvanecido por distancia de cámara): el país al acercarse a él, la región al llegar al país, etc.
+  type Capa = { lineas: any[]; rgb: string; alfa: number; nombre?: any; ventana: [number, number, number, number]; actual: number };
+  const capas: Capa[] = [];
+  const leerGeo = async (nombre: string) => (await fetch(`${cfg.capas}${nombre}.geojson`).then((r) => r.json())).features as any[];
+  const anillosDe = (f: any): LatLng[][] =>
+    f.geometry.coordinates.map((poly: number[][][]) => poly[0].map(([lng, lat]) => ({ lat, lng })));
+  const nuevaCapa = (anillos: LatLng[][], rgb: string, alfa: number, ancho: number, ventana: Capa['ventana'], nombre?: any) => {
     const lineas = anillos.map((a) => {
-      const el = new Polyline3DElement({ altitudeMode: 'CLAMP_TO_GROUND', strokeColor: color, strokeWidth: ancho, drawsOccludedSegments: true });
+      const el = new Polyline3DElement({ altitudeMode: 'CLAMP_TO_GROUND', strokeColor: `rgba(${rgb},0)`, strokeWidth: ancho, drawsOccludedSegments: true });
       ruta(el, a, 'coordinates');
       return el;
     });
-    return { anillos, lineas };
+    capas.push({ lineas, rgb, alfa, nombre, ventana, actual: -1 });
+    programarCapas();
+  };
+  // ventana = [aparece desde, opaco desde, opaco hasta, desaparece en] en metros de distancia de cámara
+  const nivel = (rango: number, [a, b, c, d]: Capa['ventana']) => {
+    const l = (x: number) => Math.log(x);
+    if (rango >= a || rango <= d) return 0;
+    if (rango > b) return (l(a) - l(rango)) / (l(a) - l(b));
+    if (rango < c) return (l(rango) - l(d)) / (l(c) - l(d));
+    return 1;
   };
   // Nombre sin pin: el marcador lleva un SVG con el texto (la etiqueta nativa es muy pequeña y no se ve desde el espacio)
   const etiqueta = (nombre: string, p: LatLng, tipo: Territorio['tipo']) => {
@@ -408,24 +416,26 @@ export async function iniciarGlobo() {
     return m;
   };
   const centroide = (a: LatLng[]) => ({ lat: a.reduce((s, p) => s + p.lat, 0) / a.length, lng: a.reduce((s, p) => s + p.lng, 0) / a.length });
-  const etiquetas: { m: any; tipo: Territorio['tipo'] }[] = [];
   const centroideLotes = centroide(cfg.lotes);
   for (const t of cfg.territorios) {
-    capa(t.capa, t.tipo === 'pais' ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.75)', t.tipo === 'pais' ? 3 : 2).then(({ anillos, lineas }) => {
-      lineas.forEach((l) => mapa.append(l));
+    leerGeo(t.capa).then((fs) => {
+      const anillos = fs.flatMap(anillosDe);
       const mayor = anillos.reduce((a, b) => (b.length > a.length ? b : a));
-      // La región se nombra un poco al norte de sus lotes, para que quede a la vista sobre las zonas
-      // El país se nombra más al sur, para no chocar con el marcador de lotes que sube desde su región
       const c = centroide(mayor);
+      // El país se nombra al sur de su centro para no chocar con el marcador de lotes; la región, al norte de sus lotes
       const lugar = t.tipo === 'pais' ? { ...c, lat: c.lat - 4.5 } : { ...centroideLotes, lat: centroideLotes.lat + 0.5 };
-      etiquetas.push({ m: etiqueta(t.nombre, lugar, t.tipo), tipo: t.tipo });
-      programarCapas();
+      if (t.tipo === 'pais') nuevaCapa(anillos, '255,255,255', 0.92, 3, [8e6, 4.5e6, 7e5, 3e5], etiqueta(t.nombre, lugar, 'pais'));
+      else nuevaCapa(anillos, '255,255,255', 0.8, 2, [1.4e6, 8e5, 7e4, 3e4], etiqueta(t.nombre, lugar, 'region'));
     });
   }
-  let municipios: any[] = [];
-  capa('municipios', 'rgba(183,143,84,0.75)', 1.5).then(({ lineas }) => {
-    municipios = lineas;
-    programarCapas();
+  // Municipios con lotes: contorno dorado y su nombre, solo ya cerca de la región
+  const conLotes = new Set(cfg.lotes.map((l) => l.municipio));
+  leerGeo('municipios').then((fs) => {
+    for (const f of fs) {
+      if (!conLotes.has(f.properties.nombre)) continue;
+      const anillos = anillosDe(f);
+      nuevaCapa(anillos, '183,143,84', 0.9, 2, [1.3e5, 7e4, 5e3, 2e3], etiqueta(f.properties.nombre, centroide(anillos[0]), 'region'));
+    }
   });
 
   // Linderos de los lotes
@@ -485,7 +495,7 @@ export async function iniciarGlobo() {
       altitudeMode: 'RELATIVE_TO_GROUND',
       extruded: true,
       sizePreserved: true,
-      label: lotesG[0].municipio,
+      // Sin texto: el municipio ya se nombra con su contorno; el pin muestra el número de lotes
       title: `${sumaUnidades(lotesG)} lotes en ${lotesG[0].municipio}`,
     });
     g.m.addEventListener('gmp-click', () => volar(camaraGrupo(lotesG), 3000));
@@ -567,9 +577,16 @@ export async function iniciarGlobo() {
       const agrupado = g && juntos && g.ids.filter((x) => pasa.has(x)).length > 1 && !g.ids.includes(abierto ?? '');
       mostrar(m, !dibujando && cerca && !agrupado && (pasa.has(id) || id === abierto));
     });
-    for (const e of etiquetas)
-      mostrar(e.m, e.tipo === 'pais' ? rango > UMBRAL_PAIS : rango > UMBRAL_NOMBRE_REGION && rango <= UMBRAL_LOTES);
-    municipios.forEach((l) => mostrar(l, rango <= UMBRAL_MUNICIPIOS));
+    for (const c of capas) {
+      const k = Math.round(nivel(rango, c.ventana) * 20) / 20;
+      if (k === c.actual) continue;
+      c.actual = k;
+      for (const l of c.lineas) {
+        l.strokeColor = `rgba(${c.rgb},${(k * c.alfa).toFixed(2)})`;
+        mostrar(l, k > 0);
+      }
+      if (c.nombre) mostrar(c.nombre, k >= 0.6);
+    }
   };
   let pendiente = false;
   const programarCapas = () => {
@@ -736,7 +753,7 @@ export async function iniciarGlobo() {
     const h0 = mapa.heading ?? 0;
     const dLng = giroCorto(fin.center.lng - c0.lng);
     const dRumbo = giroCorto(fin.heading - GIRO_FINAL - h0);
-    const duracion = Math.min(15_000, Math.max(2_800, razon * 1_350));
+    const duracion = Math.min(13_000, Math.max(2_600, razon * 1_150));
     const lista = etapas(l).filter((e) => e.umbral < r0 * 0.8);
     let siguiente = 0;
     const inicio = performance.now();
@@ -745,7 +762,8 @@ export async function iniciarGlobo() {
     raiz.dataset.cine = '';
     const paso = (ahora: number) => {
       const x = Math.min(1, (ahora - inicio) / duracion);
-      const p = 0.55 * suave(x) + 0.45 * x;
+      // Más lineal que el video: arranca suave pero no se arrastra al llegar
+      const p = 0.3 * suave(x) + 0.7 * x;
       const range = Math.exp(Math.log(r0) + (Math.log(fin.range) - Math.log(r0)) * p);
       const pc = suave(x / 0.5);
       Object.assign(mapa, {
