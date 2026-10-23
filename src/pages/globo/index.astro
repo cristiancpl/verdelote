@@ -58,6 +58,8 @@ const lotes = await Promise.all(
           vereda: d.vereda,
           areaTxt: textoArea(d),
           zona: zonaDe(d.municipio),
+          // Lotes reales del proyecto (parcelación); un predio sin unidades cuenta como 1
+          unidades: d.unidades.length || 1,
           lat: medio?.lat ?? d.mapa?.lat ?? d.coordenadas!.lat,
           lng: medio?.lng ?? d.mapa?.lon ?? d.coordenadas!.lon,
           alt: d.mapa?.alt ?? 0,
@@ -77,6 +79,15 @@ const lotes = await Promise.all(
 // Respaldo sin 3D: último cuadro del vuelo publicado como fondo de la llegada
 const conVuelo = entradas.find((l) => l.data.vuelo);
 const fondo = conVuelo ? await getImage({ src: conVuelo.data.vuelo!.final, width: 1920, format: 'webp' }) : undefined;
+
+/** "3 proyectos · 10 lotes" cuando hay parcelaciones; "1 lote" o "4 lotes" cuando cada proyecto es un solo lote */
+const conteoTxt = (proyectos: number, lotes: number) =>
+  lotes > proyectos
+    ? `${proyectos === 1 ? '1 proyecto' : `${proyectos} proyectos`} · ${lotes} lotes`
+    : lotes === 1
+      ? '1 lote'
+      : `${lotes} lotes`;
+const unidadesDe = (xs: { cliente: { unidades: number } }[]) => xs.reduce((s, l) => s + l.cliente.unidades, 0);
 
 const municipios = [...new Set(lotes.map((l) => l.d.municipio))].sort((a, b) => a.localeCompare(b, 'es'));
 const zonas = [...new Map(lotes.map((l) => [l.zona.id, l.zona])).values()];
@@ -130,6 +141,13 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
       </p>
     </section>
 
+    <button class="pildora omitir" type="button" data-omitir>
+      Omitir <Icon name="arrow-right" />
+    </button>
+    <button class="pildora lista-btn" type="button" data-lista-btn>
+      <Icon name="list" /> Lista
+    </button>
+
     <aside class="rail" data-rail aria-label="Lotes">
       <div class="rail-top">
         <nav class="migas" aria-label="Ubicación en el globo">
@@ -182,7 +200,7 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
         </label>
       </div>
 
-      <p class="conteo" data-conteo aria-live="polite">{lotes.length} lotes</p>
+      <p class="conteo" data-conteo aria-live="polite">{conteoTxt(lotes.length, unidadesDe(lotes))}</p>
 
       <div class="lista" data-lista>
         {
@@ -190,7 +208,7 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
             <section class="grupo" data-grupo={z.id}>
               <button type="button" class="grupo-titulo" data-ir-zona={z.id}>
                 {z.nombre}
-                <span data-grupo-n />
+                <span data-grupo-n>{conteoTxt(lotes.filter((l) => l.zona.id === z.id).length, unidadesDe(lotes.filter((l) => l.zona.id === z.id)))}</span>
               </button>
               <ul>
                 {lotes
@@ -312,7 +330,7 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
                 <div class="fila">
                   <button class="btn btn-ghost btn-sm" type="button" data-orbitar aria-pressed="false">
                     <Icon name="arrows-clockwise" />
-                    Girar alrededor
+                    <span data-orbitar-txt>Girar alrededor</span>
                   </button>
                   <button class="btn btn-ghost btn-sm" type="button" data-volver>
                     <Icon name="arrow-left" />
@@ -508,6 +526,62 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
+  }
+
+  /* Botones en píldora sobre el globo: Omitir (durante el vuelo) y Lista (tablet, con la ficha abierta) */
+  .pildora {
+    position: absolute;
+    z-index: 26;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 16px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgb(17 19 20 / 0.84);
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 12px 32px rgb(0 0 0 / 0.35);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.4s var(--ease), transform 0.4s var(--ease), visibility 0.4s, background 0.2s;
+  }
+  .pildora:hover {
+    background: rgb(36 38 40 / 0.92);
+  }
+  .pildora:active {
+    transform: translateY(1px);
+  }
+  .pildora:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .omitir {
+    left: 50%;
+    bottom: 52px;
+    translate: -50% 0;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+  [data-cine] .omitir {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+  .lista-btn {
+    display: none;
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .pildora {
+      background: var(--bg-2);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
   }
 
   /* Superficie flotante compartida por la lista y la ficha */
@@ -1020,13 +1094,27 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
     z-index: 1;
   }
 
-  /* Tablet: superficies más angostas */
+  /* Tablet: superficies más angostas y un solo panel a la vez (con un lote abierto, la ficha reemplaza a la lista) */
   @media (max-width: 1100px) {
     .rail {
       width: 300px;
     }
     .ficha {
       width: 340px;
+    }
+    [data-vista='lote'] .rail {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transform: translateX(-16px);
+    }
+  }
+  /* El botón Lista vive a la izquierda de la ficha, lejos de la brújula y la atribución de Google */
+  @media (min-width: 768px) and (max-width: 1100px) {
+    [data-vista='lote']:not([data-cine]) .lista-btn {
+      display: inline-flex;
+      top: calc(var(--nav-h) + 8px);
+      right: 368px;
     }
   }
   /* Pantallas bajas o medianas: la ficha prioriza precio y acciones */
@@ -1085,10 +1173,6 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
     .ficha .lugar,
     .ficha .cuerpo h2 {
       padding-right: 48px;
-    }
-    [data-vista='lote'] .rail {
-      opacity: 0;
-      visibility: hidden;
     }
   }
 

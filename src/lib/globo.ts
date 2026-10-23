@@ -11,6 +11,8 @@ interface LoteGlobo {
   vereda?: string;
   areaTxt: string;
   zona: { id: string; nombre: string };
+  /** Lotes reales del proyecto (1 si es un predio sin parcelación) */
+  unidades: number;
   lat: number;
   lng: number;
   alt: number;
@@ -101,6 +103,15 @@ const soportaWebGL = () => {
   }
 };
 
+/** "3 proyectos · 10 lotes" si hay parcelaciones; "1 lote" o "4 lotes" si cada proyecto es un solo lote */
+const textoConteo = (proyectos: number, lotes: number) =>
+  lotes > proyectos
+    ? `${proyectos === 1 ? '1 proyecto' : `${proyectos} proyectos`} · ${lotes} lotes`
+    : lotes === 1
+      ? '1 lote'
+      : `${lotes} lotes`;
+const sumaUnidades = (lotes: LoteGlobo[]) => lotes.reduce((s, l) => s + l.unidades, 0);
+
 const normalizar = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 /** Distancia aproximada en metros entre dos puntos cercanos */
@@ -168,11 +179,11 @@ export async function iniciarGlobo() {
       $(`[data-item="${l.id}"]`).hidden = !ok;
     }
     for (const z of zonas) {
-      const n = cfg.lotes.filter((l) => l.zona.id === z.id && pasa.has(l.id)).length;
-      $(`[data-grupo="${z.id}"]`).hidden = n === 0;
-      $(`[data-grupo="${z.id}"] [data-grupo-n]`).textContent = n === 1 ? '1 lote' : `${n} lotes`;
+      const deZona = cfg.lotes.filter((l) => l.zona.id === z.id && pasa.has(l.id));
+      $(`[data-grupo="${z.id}"]`).hidden = deZona.length === 0;
+      $(`[data-grupo="${z.id}"] [data-grupo-n]`).textContent = textoConteo(deZona.length, sumaUnidades(deZona));
     }
-    $('[data-conteo]').textContent = pasa.size === 1 ? '1 lote' : `${pasa.size} lotes`;
+    $('[data-conteo]').textContent = textoConteo(pasa.size, sumaUnidades(cfg.lotes.filter((l) => pasa.has(l.id))));
     $('[data-vacio]').hidden = pasa.size > 0;
     const activos = [fMunicipio.value, fArea.value, fPrecio.value, fRecorrido.checked].filter(Boolean).length;
     const n = $('[data-filtros-n]');
@@ -283,6 +294,8 @@ export async function iniciarGlobo() {
   $('[data-lienzo]').append(mapa);
   // En celular la lista y la ficha ocupan la parte baja: se ocultan brújula y pantalla completa (la atribución queda)
   const angosto = matchMedia('(max-width: 767px)');
+  // Tablet y celular: un solo panel a la vez y sin órbita automática
+  const compacto = matchMedia('(max-width: 1100px)');
   const ajustarUI = () => (mapa.defaultUIHidden = angosto.matches);
   ajustarUI();
   angosto.addEventListener('change', ajustarUI);
@@ -370,6 +383,7 @@ export async function iniciarGlobo() {
     new PinElement({ background: fondo, borderColor: TINTA, glyphColor: TINTA, scale: escala, ...(glifo ? { glyphText: glifo } : {}) });
   const colorLote = (l: LoteGlobo, activo: boolean) => (activo ? '#f4f5f3' : l.estado === 'disponible' ? DORADO : GRIS);
 
+  const etiquetaLote = (l: LoteGlobo) => `${l.nombre} · ${l.precioCorto}`;
   const marcadoresLote = new Map<string, any>();
   for (const l of cfg.lotes) {
     const m = new MarcadorClic({
@@ -378,7 +392,7 @@ export async function iniciarGlobo() {
       extruded: true,
       sizePreserved: true,
       // Nombre del proyecto y precio en el pin: "Villas de Prado Verde · Desde $110 M"
-      label: `${l.nombre} · ${l.precioCorto}`,
+      label: etiquetaLote(l),
       title: `${l.nombre}, ${l.municipio}`,
     });
     m.append(pin(colorLote(l, false)));
@@ -402,7 +416,7 @@ export async function iniciarGlobo() {
       extruded: true,
       sizePreserved: true,
       label: lotesG[0].municipio,
-      title: `${lotesG.length} lotes en ${lotesG[0].municipio}`,
+      title: `${sumaUnidades(lotesG)} lotes en ${lotesG[0].municipio}`,
     });
     g.m.addEventListener('gmp-click', () => volar(camaraGrupo(lotesG), 3000));
     g.ids.forEach((id) => enGrupo.set(id, g));
@@ -411,6 +425,8 @@ export async function iniciarGlobo() {
   const marcarActivo = () =>
     marcadoresLote.forEach((m, id) => {
       m.replaceChildren(pin(colorLote(porId.get(id)!, id === abierto), undefined, id === abierto ? 1.25 : 1));
+      // El lote abierto ya se nombra en la ficha: su pin queda sin texto para no repetirlo
+      m.label = id === abierto ? null : etiquetaLote(porId.get(id)!);
     });
 
   // De lejos los lotes se agrupan en un marcador por región con el número de lotes; un clic baja a la región
@@ -439,22 +455,25 @@ export async function iniciarGlobo() {
     const rango = mapa.range ?? PLANETA.range;
     const cerca = rango <= UMBRAL_LOTES;
     marcadoresRegion.forEach((m, region) => {
-      const n = cfg.lotes.filter((l) => l.departamento === region && pasa.has(l.id)).length;
+      const visibles = cfg.lotes.filter((l) => l.departamento === region && pasa.has(l.id));
+      // El número del pin cuenta lotes (unidades), no proyectos
+      const n = sumaUnidades(visibles);
       if (m.dataset.n !== String(n)) {
         m.dataset.n = String(n);
         m.replaceChildren(pin(DORADO, String(n), 1.3));
       }
-      mostrar(m, !cerca && n > 0);
+      mostrar(m, !cerca && visibles.length > 0);
     });
     const juntos = rango > UMBRAL_VECINOS;
     for (const g of grupos) {
       if (!g.m) continue;
-      const n = g.ids.filter((id) => pasa.has(id)).length;
+      const visibles = g.ids.filter((id) => pasa.has(id));
+      const n = sumaUnidades(visibles.map((id) => porId.get(id)!));
       if (g.m.dataset.n !== String(n)) {
         g.m.dataset.n = String(n);
         g.m.replaceChildren(pin(DORADO, String(n), 1.15));
       }
-      mostrar(g.m, !dibujando && cerca && juntos && n > 1 && !g.ids.includes(abierto ?? ''));
+      mostrar(g.m, !dibujando && cerca && juntos && visibles.length > 1 && !g.ids.includes(abierto ?? ''));
     }
     marcadoresLote.forEach((m, id) => {
       const g = enGrupo.get(id);
@@ -480,7 +499,11 @@ export async function iniciarGlobo() {
   // Cámara
   let animacion: 'ninguna' | 'vuelo' | 'llegada-lote' | 'orbita' | 'cine' = 'ninguna';
   let cine = 0;
-  const marcarOrbita = (si: boolean) => $$('[data-orbitar]').forEach((b) => b.setAttribute('aria-pressed', String(si)));
+  const marcarOrbita = (si: boolean) =>
+    $$('[data-orbitar]').forEach((b) => {
+      b.setAttribute('aria-pressed', String(si));
+      $('[data-orbitar-txt]', b).textContent = si ? 'Detener giro' : 'Girar alrededor';
+    });
   const detener = () => {
     if (cine) terminarCine(false);
     mapa.stopCameraAnimation?.();
@@ -497,18 +520,35 @@ export async function iniciarGlobo() {
     animacion = tipo;
     mapa.flyCameraTo({ endCamera: cam, durationMillis: ms });
   };
-  // En celular la ficha tapa la mitad baja: el centro de la cámara se corre hacia quien mira y el lote sube en pantalla
+  // El centro de la cámara se corre para que el lote quede en la parte libre de la pantalla.
+  // Celular: la ficha tapa la mitad baja, el centro va hacia quien mira y el lote sube.
+  // Tablet: la ficha tapa la derecha, el centro va hacia la derecha de la cámara y el lote pasa a la izquierda
   const camaraLlegada = (l: LoteGlobo): Camara => {
     const cam = camaraLote(l);
-    if (!angosto.matches) return cam;
-    const k = cam.range * 0.3;
+    if (!compacto.matches) return cam;
     const h = (cam.heading * Math.PI) / 180;
-    const lat = cam.center.lat - (k * Math.cos(h)) / 110_574;
-    const lng = cam.center.lng - (k * Math.sin(h)) / (111_320 * Math.cos((cam.center.lat * Math.PI) / 180));
+    const mLat = 110_574;
+    const mLng = 111_320 * Math.cos((cam.center.lat * Math.PI) / 180);
+    let lat = cam.center.lat;
+    let lng = cam.center.lng;
+    if (angosto.matches) {
+      const k = cam.range * 0.3;
+      lat -= (k * Math.cos(h)) / mLat;
+      lng -= (k * Math.sin(h)) / mLng;
+    } else {
+      // Medio ancho de la ficha en píxeles, convertido a metros con el campo de visión vertical (~0,63 veces el rango)
+      const alto = Math.max(1, $('[data-lienzo]').clientHeight);
+      const k = (cam.range * 0.63 * (ficha.offsetWidth / 2)) / alto;
+      lat -= (k * Math.sin(h)) / mLat;
+      lng += (k * Math.cos(h)) / mLng;
+    }
     return { ...cam, center: { ...cam.center, lat, lng } };
   };
+  // Si quien mira detiene el giro, no se reanuda solo mientras siga en ese lote
+  let orbitaDetenida = false;
   const orbitar = () => {
     if (!abierto || reducido) return;
+    orbitaDetenida = false;
     detener();
     animacion = 'orbita';
     marcarOrbita(true);
@@ -521,7 +561,14 @@ export async function iniciarGlobo() {
     // Al llegar al lote, la cámara empieza a girar despacio alrededor del lindero
     if (fue === 'llegada-lote') alLlegar();
   });
-  $$('[data-orbitar]').forEach((b) => b.addEventListener('click', () => (animacion === 'orbita' ? detener() : orbitar())));
+  $$('[data-orbitar]').forEach((b) =>
+    b.addEventListener('click', () => {
+      if (animacion === 'orbita') {
+        orbitaDetenida = true;
+        detener();
+      } else orbitar();
+    }),
+  );
 
   // Títulos por etapa durante el vuelo (país, región, municipio, vereda, lote), como en el video
   const caja = $('[data-etapa]');
@@ -565,8 +612,24 @@ export async function iniciarGlobo() {
     ocultarEtapa = window.setTimeout(mostrarPaneles, 2400);
     alLlegar();
   };
+  // Omitir: salta al final del vuelo, muestra los paneles y deja que corra lo de la llegada (órbita en escritorio)
+  let finCine: Camara | undefined;
+  const omitirCine = () => {
+    if (!cine || !finCine) return;
+    const fin = finCine;
+    cancelAnimationFrame(cine);
+    cine = 0;
+    animacion = 'ninguna';
+    window.clearTimeout(ocultarEtapa);
+    Object.assign(mapa, fin);
+    mostrarPaneles();
+    programarCapas();
+    alLlegar();
+  };
+  $('[data-omitir]').addEventListener('click', omitirCine);
   const vueloCine = (fin: Camara, l: LoteGlobo, llegada: () => void) => {
     detener();
+    finCine = fin;
     const r0 = Math.max(mapa.range ?? PLANETA.range, fin.range);
     const razon = Math.log(r0 / fin.range);
     alLlegar = llegada;
@@ -627,6 +690,7 @@ export async function iniciarGlobo() {
   requestAnimationFrame(girar);
   $('[data-lienzo]').addEventListener('pointerdown', () => {
     girando = false;
+    if (animacion === 'orbita') orbitaDetenida = true;
     if (animacion === 'orbita' || animacion === 'cine') detener();
     if ('cine' in raiz.dataset) mostrarPaneles();
   });
@@ -658,6 +722,7 @@ export async function iniciarGlobo() {
     const l = porId.get(id);
     if (!l) return;
     girando = false;
+    orbitaDetenida = false;
     zonaActual = l.zona.id;
     ponerVista('lote');
     ponerMiga(l.zona.id);
@@ -665,7 +730,8 @@ export async function iniciarGlobo() {
     hash(id);
     vueloCine(camaraLlegada(l), l, () => {
       // Al llegar, la cámara empieza a girar despacio alrededor del lindero
-      if (vista === 'lote' && abierto === id && !dibujando && !angosto.matches) orbitar();
+      // Órbita automática solo en escritorio (el dueño la pidió); en tablet y celular queda a pedido con "Girar alrededor"
+      if (vista === 'lote' && abierto === id && !dibujando && !compacto.matches && !orbitaDetenida) orbitar();
     });
   };
   const volverAlMapa = () => {
@@ -728,6 +794,8 @@ export async function iniciarGlobo() {
   $$('[data-ir-zona]').forEach((b) => b.addEventListener('click', () => irZona(b.dataset.irZona!)));
   $$('[data-abrir]').forEach((b) => b.addEventListener('click', () => irLote(b.dataset.abrir!)));
   $$('[data-volver]').forEach((b) => b.addEventListener('click', volverAlMapa));
+  // Tablet: "Lista" cierra la ficha y devuelve la lista (un solo panel a la vez)
+  $('[data-lista-btn]').addEventListener('click', volverAlMapa);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && abierto && !dialogo.open) volverAlMapa();
   });
