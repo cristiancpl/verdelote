@@ -130,25 +130,33 @@
       "etiqueta": "Ubicación",
       "titulo": "Vereda Yolombal, Guarne",
       "texto": "Fincas campestres, aire de montaña y el Oriente antioqueño a pocos minutos",
-      "media": "../../assets/lotes/villas-de-prado-verde/vereda-aerea.jpg"
+      "media": "../../assets/lotes/villas-de-prado-verde/ia-vereda.jpg",
+      "video": "lotes/villas-de-prado-verde/ia-vereda.mp4",
+      "ia": true
     },
     {
       "etiqueta": "Llegada",
       "titulo": "Pavimento hasta el lote",
       "texto": "Llegas en carro por vía pavimentada, sin trochas",
-      "media": "../../assets/lotes/villas-de-prado-verde/via-pavimentada.jpg"
+      "media": "../../assets/lotes/villas-de-prado-verde/ia-via.jpg",
+      "video": "lotes/villas-de-prado-verde/ia-via.mp4",
+      "ia": true
     },
     {
       "etiqueta": "La parcelación",
       "titulo": "Cuatro lotes para elegir",
       "texto": "De 1.308 a 2.450 m², con vía interna a cada uno",
-      "media": "../../assets/lotes/villas-de-prado-verde/plano-lotes.jpg"
+      "media": "../../assets/lotes/villas-de-prado-verde/ia-parcelacion.jpg",
+      "video": "lotes/villas-de-prado-verde/ia-parcelacion.mp4",
+      "ia": true
     },
     {
       "etiqueta": "Servicios",
       "titulo": "Agua y luz listas",
       "texto": "Acueducto y energía eléctrica para empezar a construir",
-      "media": "../../assets/lotes/villas-de-prado-verde/explanacion-montana.jpg"
+      "media": "../../assets/lotes/villas-de-prado-verde/ia-explanacion.jpg",
+      "video": "lotes/villas-de-prado-verde/ia-explanacion.mp4",
+      "ia": true
     }
   ],
   "recorrido": [
@@ -160,12 +168,20 @@
     {
       "titulo": "La vereda",
       "descripcion": "Fincas campestres alrededor",
-      "poster": "../../assets/lotes/villas-de-prado-verde/vereda-aerea.jpg"
+      "poster": "../../assets/lotes/villas-de-prado-verde/ia-vereda.jpg",
+      "video": "lotes/villas-de-prado-verde/ia-vereda.mp4"
     },
     {
       "titulo": "El terreno",
       "descripcion": "Montaña al fondo y espacio para construir",
-      "poster": "../../assets/lotes/villas-de-prado-verde/explanacion-montana.jpg"
+      "poster": "../../assets/lotes/villas-de-prado-verde/ia-explanacion.jpg",
+      "video": "lotes/villas-de-prado-verde/ia-explanacion.mp4"
+    },
+    {
+      "titulo": "La terraza",
+      "descripcion": "Terreno ya cortado junto al talud",
+      "poster": "../../assets/lotes/villas-de-prado-verde/ia-terraza.jpg",
+      "video": "lotes/villas-de-prado-verde/ia-terraza.mp4"
     }
   ],
   "foto_mosaico": 2

@@ -163,7 +163,8 @@
     {
       "titulo": "Desde el aire",
       "descripcion": "3.800 m² en una ladera verde de Girardota",
-      "poster": "../../assets/lotes/mirador-del-norte/portada-explanacion-valle.jpg"
+      "poster": "../../assets/lotes/mirador-del-norte/ia-la-vista.jpg",
+      "video": "lotes/mirador-del-norte/ia-la-vista.mp4"
     }
   ],
   "frase": {
@@ -181,13 +182,17 @@
       "etiqueta": "Llegada",
       "titulo": "Carretera hasta la puerta",
       "texto": "Vía en concreto en buen estado hasta el lote. Llegas en carro, sin trochas",
-      "media": "../../assets/lotes/mirador-del-norte/via-acceso.jpg"
+      "media": "../../assets/lotes/mirador-del-norte/ia-via-acceso.jpg",
+      "video": "lotes/mirador-del-norte/ia-via-acceso.mp4",
+      "ia": true
     },
     {
       "etiqueta": "El terreno",
       "titulo": "1.000 m² ya explanados",
       "texto": "La explanación está hecha. Puedes empezar a construir desde el primer día",
-      "media": "../../assets/lotes/mirador-del-norte/explanacion-talud.jpg"
+      "media": "../../assets/lotes/mirador-del-norte/ia-talud.jpg",
+      "video": "lotes/mirador-del-norte/ia-talud.mp4",
+      "ia": true
     },
     {
       "etiqueta": "La vista",
@@ -197,10 +202,20 @@
       "video": "lotes/mirador-del-norte/la-vista.mp4"
     },
     {
+      "etiqueta": "El bosque",
+      "titulo": "Bosque nativo al lado",
+      "texto": "El lote limita con bosque nativo, sombra y frescura a pocos pasos",
+      "media": "../../assets/lotes/mirador-del-norte/ia-borde-bosque.jpg",
+      "video": "lotes/mirador-del-norte/ia-borde-bosque.mp4",
+      "ia": true
+    },
+    {
       "etiqueta": "Desde el aire",
       "titulo": "3.800 m² para imaginar",
       "texto": "Espacio para casa, huerta y jardín. Agua de riego y acueducto veredal",
-      "media": "../../assets/lotes/mirador-del-norte/portada-explanacion-valle.jpg"
+      "media": "../../assets/lotes/mirador-del-norte/ia-explanacion-valle.jpg",
+      "video": "lotes/mirador-del-norte/ia-explanacion-valle.mp4",
+      "ia": true
     }
   ],
   "foto_mosaico": 5,

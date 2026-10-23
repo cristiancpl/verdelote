@@ -17,7 +17,7 @@ const fichaUrl = destacado ? url(`lotes/${destacado.id}/`) : undefined;
 
 // Hero: el vuelo del lote destacado (sin bucle); si no hay vuelo, su teaser o primer clip como antes
 const vuelo = d?.vuelo;
-const clip = d ? primerClip(d) : undefined;
+const clip = d ? primerClip(d, true) : undefined;
 const heroSrc = vuelo?.src ?? d?.teaser ?? clip?.video ?? clip?.src;
 const modo = !destacado || !heroSrc ? 'estatico' : vuelo ? 'vuelo' : 'teaser';
 const heroPosterSrc = vuelo?.poster ?? (d?.teaser ? (d.video_completo?.poster ?? clip?.poster) : clip?.poster);

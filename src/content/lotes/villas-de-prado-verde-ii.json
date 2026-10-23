@@ -130,13 +130,25 @@
       "etiqueta": "Ubicación",
       "titulo": "Vereda Yolombal, Guarne",
       "texto": "Campo abierto a 10 minutos del parque principal",
-      "media": "../../assets/lotes/villas-de-prado-verde-ii/nubes-fincas.jpg"
+      "media": "../../assets/lotes/villas-de-prado-verde-ii/ia-nubes-fincas.jpg",
+      "video": "lotes/villas-de-prado-verde-ii/ia-nubes-fincas.mp4",
+      "ia": true
     },
     {
       "etiqueta": "El terreno",
       "titulo": "Plano y con pasto",
       "texto": "Pasto, cerca y espacio para construir",
-      "media": "../../assets/lotes/villas-de-prado-verde-ii/panoramica-poster.jpg"
+      "media": "../../assets/lotes/villas-de-prado-verde-ii/ia-potrero-arboles.jpg",
+      "video": "lotes/villas-de-prado-verde-ii/ia-potrero-arboles.mp4",
+      "ia": true
+    },
+    {
+      "etiqueta": "El entorno",
+      "titulo": "Fincas campestres alrededor",
+      "texto": "Vecinos tranquilos y paisaje abierto en la vereda Yolombal",
+      "media": "../../assets/lotes/villas-de-prado-verde-ii/ia-potrero-fincas.jpg",
+      "video": "lotes/villas-de-prado-verde-ii/ia-potrero-fincas.mp4",
+      "ia": true
     },
     {
       "etiqueta": "La parcelación",
@@ -149,12 +161,14 @@
     {
       "titulo": "El terreno",
       "descripcion": "Vuelta completa por el lote",
-      "poster": "../../assets/lotes/villas-de-prado-verde-ii/panoramica-poster.jpg"
+      "poster": "../../assets/lotes/villas-de-prado-verde-ii/ia-potrero-seto.jpg",
+      "video": "lotes/villas-de-prado-verde-ii/ia-potrero-seto.mp4"
     },
     {
       "titulo": "Los vecinos",
       "descripcion": "Fincas campestres alrededor",
-      "poster": "../../assets/lotes/villas-de-prado-verde-ii/potrero-fincas.jpg"
+      "poster": "../../assets/lotes/villas-de-prado-verde-ii/ia-potrero-fincas.jpg",
+      "video": "lotes/villas-de-prado-verde-ii/ia-potrero-fincas.mp4"
     }
   ],
   "foto_mosaico": 2
