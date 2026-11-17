@@ -1,1192 +1,444 @@
 ---
-// Inicio de AM Grupo Inmobiliario, el globo 3D: el comprador navega un globo 3D fotorrealista (gmp-map-3d) hasta cada lote.
-// Llegada con el planeta girando, zonas de Antioquia, lotes con precio corto, ficha lateral y recorrido en video.
-// La clave sale de PUBLIC_GOOGLE_MAPS_KEY (.env, fuera de git). Sin clave o sin WebGL queda la lista de lotes
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { Image, getImage } from 'astro:assets';
-import { getCollection } from 'astro:content';
-import Icon from '../components/Icon.astro';
-import Base from '../layouts/Base.astro';
-import { formatArea, nombreCorto, url } from '../lib/format';
-import { textoArea, textoPrecio, textoPrecioCorto, textoPrecioDetalle, tieneRecorrido } from '../lib/lote';
-import { zonaDe } from '../lib/zonas';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import marca from '../assets/marca/am-marca-claro.png';
+import { destinos, area, perimetro, miles } from '../data/destinos';
 
-const entradas = (await getCollection('lotes')).sort((a, b) => a.data.orden - b.data.orden);
-
-// Archivo de public/capas. Se resuelve desde la raíz del proyecto: import.meta.url cambia de carpeta al compilar
-const capa = (archivo: string) => join(process.cwd(), 'public', 'capas', archivo);
-
-/** Lindero dibujado en el globo (public/capas/lindero-<id>.geojson) como [{lat, lng}] */
-const lindero = (id: string) => {
-  const ruta = capa(`lindero-${id}.geojson`);
-  if (!existsSync(ruta)) return [];
-  const geo = JSON.parse(readFileSync(ruta, 'utf-8'));
-  return (geo.features[0].geometry.coordinates[0] as number[][]).slice(0, -1).map(([lng, lat]) => ({ lat, lng }));
-};
-
-/** Centro del lindero; el marcador y la órbita giran alrededor de él */
-const centro = (pts: { lat: number; lng: number }[]) =>
-  pts.length >= 3
-    ? { lat: pts.reduce((s, p) => s + p.lat, 0) / pts.length, lng: pts.reduce((s, p) => s + p.lng, 0) / pts.length }
-    : undefined;
-
-const lotes = await Promise.all(
-  entradas
-    .filter((l) => l.data.mapa?.lat !== undefined || l.data.coordenadas)
-    .map(async (l) => {
-      const d = l.data;
-      const contorno = lindero(l.id);
-      const medio = centro(contorno);
-      const video = d.video_completo ?? (d.vuelo ? { src: d.vuelo.src, poster: d.vuelo.poster } : undefined);
-      return {
-        id: l.id,
-        d,
-        zona: zonaDe(d.municipio),
-        corto: nombreCorto(d.nombre),
-        whatsapp: d.contacto
-          ? `https://wa.me/${d.contacto.whatsapp}?text=${encodeURIComponent(
-              `Hola ${d.contacto.nombre}, vi el ${d.nombre} en AM Grupo Inmobiliario y quiero agendar una visita`,
-            )}`
-          : undefined,
-        ruta:
-          d.coordenadas && !d.demo
-            ? `https://www.google.com/maps/dir/?api=1&destination=${d.coordenadas.lat},${d.coordenadas.lon}`
-            : undefined,
-        video: video ? { src: url(video.src), poster: (await getImage({ src: video.poster, width: 1280 })).src } : undefined,
-        cliente: {
-          id: l.id,
-          nombre: nombreCorto(d.nombre),
-          municipio: d.municipio,
-          departamento: d.departamento,
-          vereda: d.vereda,
-          areaTxt: textoArea(d),
-          zona: zonaDe(d.municipio),
-          // Lotes reales del proyecto (parcelación); un predio sin unidades cuenta como 1
-          unidades: d.unidades.length || 1,
-          lat: medio?.lat ?? d.mapa?.lat ?? d.coordenadas!.lat,
-          lng: medio?.lng ?? d.mapa?.lon ?? d.coordenadas!.lon,
-          alt: d.mapa?.alt ?? 0,
-          camara: d.mapa?.camara,
-          area: d.area_m2,
-          precio: d.precio_cop ?? 0,
-          precioCorto: textoPrecioCorto(d),
-          estado: d.estado,
-          demo: d.demo,
-          recorrido: tieneRecorrido(d),
-          lindero: contorno,
-        },
-      };
-    }),
-);
-
-// Respaldo sin 3D: último cuadro del vuelo publicado como fondo de la llegada
-const conVuelo = entradas.find((l) => l.data.vuelo);
-const fondo = conVuelo ? await getImage({ src: conVuelo.data.vuelo!.final, width: 1920, format: 'webp' }) : undefined;
-
-/** "3 proyectos · 10 lotes" cuando hay parcelaciones; "1 lote" o "4 lotes" cuando cada proyecto es un solo lote */
-const conteoTxt = (proyectos: number, lotes: number) =>
-  lotes > proyectos
-    ? `${proyectos === 1 ? '1 proyecto' : `${proyectos} proyectos`} · ${lotes} lotes`
-    : lotes === 1
-      ? '1 lote'
-      : `${lotes} lotes`;
-const unidadesDe = (xs: { cliente: { unidades: number } }[]) => xs.reduce((s, l) => s + l.cliente.unidades, 0);
-
-const municipios = [...new Set(lotes.map((l) => l.d.municipio))].sort((a, b) => a.localeCompare(b, 'es'));
-const zonas = [...new Map(lotes.map((l) => [l.zona.id, l.zona])).values()];
-
-// Países y regiones con lotes: son los únicos con contorno y nombre en el globo (capas en public/capas/<nombre>.geojson).
-// El esquema no guarda el país: hoy todos los lotes están en Colombia
-const slugCapa = (n: string) => n.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().replace(/\s+/g, '-');
-const territorios = [
-  { nombre: 'Colombia', tipo: 'pais' as const },
-  ...[...new Set(lotes.map((l) => l.d.departamento))].map((nombre) => ({ nombre, tipo: 'region' as const })),
-]
-  .map((t) => ({ ...t, capa: slugCapa(t.nombre) }))
-  .filter((t) => existsSync(capa(`${t.capa}.geojson`)));
-
-const config = {
-  key: import.meta.env.PUBLIC_GOOGLE_MAPS_KEY ?? '',
-  territorios,
-  capas: url('capas/'),
-  fichas: url('lotes/'),
-  dibujo: import.meta.env.DEV,
-  guardar: url('__lindero'),
-  lotes: lotes.map((l) => l.cliente),
-};
-const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const titulo = 'Del espacio al lote · AM Grupo Inmobiliario';
+const descripcion = 'Elige un lote y baja hasta él desde el espacio. Lo ves desde el aire, con su lindero y sus medidas, antes de ir';
+const imagen = new URL(`${base}/og-default.png`, Astro.site ?? Astro.url).href;
 ---
 
-<Base
-  description="Navega Antioquia en 3D, vuela hasta cada lote y mira el terreno desde el aire antes de visitarlo"
-  nav="overlay"
->
-  <div class="globo" data-globo data-vista="llegada">
-    <div class="lienzo" data-lienzo role="region" aria-label="Globo 3D con los lotes de AM Grupo Inmobiliario"></div>
-    {fondo && <img class="fondo" src={fondo.src} alt="" data-fondo hidden />}
+<!doctype html>
+<html lang="es-CO">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="theme-color" content="#05070a" />
+    <meta name="description" content={descripcion} />
+    <meta property="og:title" content={titulo} />
+    <meta property="og:description" content={descripcion} />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content={imagen} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href={`${base}/favicon.png`} />
+    <link rel="apple-touch-icon" href={`${base}/apple-touch-icon.png`} />
+    <title>{titulo}</title>
+  </head>
+  <body data-etapa="espacio" data-video="no">
+    <!-- Resplandor alrededor del planeta; el recorrido lo mantiene centrado en el globo -->
+    <div id="halo" aria-hidden="true"></div>
+    <div id="mapa" aria-hidden="true"></div>
 
-    <div class="etapa" data-etapa aria-live="polite">
-      <strong data-etapa-titulo></strong>
-      <span data-etapa-sub></span>
+    <video id="dron" muted playsinline preload="metadata"></video>
+
+    <header class="barra">
+      <img src={marca.src} width="88" height="43" alt="AM Grupo Inmobiliario" />
+      <button type="button" class="enlace" data-accion="acerca">Cómo se hace</button>
+    </header>
+
+    <!-- Relato del descenso -->
+    <div class="hud" aria-hidden="true">
+      <strong id="hud-lugar">Planeta Tierra</strong>
+      <span>Altitud <b id="hud-altitud"></b></span>
     </div>
+    <button type="button" class="saltar secundario" data-accion="saltar">Saltar el vuelo</button>
 
-    <section class="llegada" data-llegada aria-labelledby="llegada-titulo">
-      <h1 id="llegada-titulo">Tu pedacito de mundo <span>Elígelo desde el cielo</span></h1>
-      <p>Recorre Colombia en 3D y conoce cada terreno antes de pisarlo</p>
-      <div class="acciones">
-        <button class="btn btn-primary" type="button" data-explorar>
-          Explorar lotes <Icon name="arrow-right" />
-        </button>
-        <a class="btn btn-glass" href={url('lotes/')}>Ver en lista</a>
-      </div>
-      <p class="respaldo-aviso" data-respaldo-aviso hidden>
-        El 3D no está disponible en este navegador. Todos los lotes siguen en la lista
-      </p>
+    <!-- Planeta: elegir lote -->
+    <section class="panel portada" data-panel="espacio">
+      <p class="sobre">Recorrido desde el espacio</p>
+      <h1>De todo el planeta, este lugar</h1>
+      <p class="bajada">Elige un lote y baja hasta él. Lo ves desde el aire, con su lindero y sus medidas, antes de ir</p>
+      <ul class="destinos">
+        {destinos.map((d) => (
+          <li>
+            <button type="button" data-elegir={d.id} aria-pressed="false">
+              <span class="punto"></span>
+              <span class="textos"><strong>{d.nombre}</strong><span>{d.lugar}</span></span>
+              <em>{d.estado === 'completo' ? 'Con toma de dron' : 'Solo satélite'}</em>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <button type="button" class="principal" data-accion="bajar">Bajar al lote</button>
     </section>
 
-    <button class="pildora omitir" type="button" data-omitir>
-      Omitir <Icon name="arrow-right" />
-    </button>
-    <button class="pildora lista-btn" type="button" data-lista-btn>
-      <Icon name="list" /> Lista
-    </button>
-
-    <aside class="rail" data-rail aria-label="Lotes">
-      <div class="rail-top">
-        <nav class="migas" aria-label="Ubicación en el globo">
-          <button type="button" class="miga" data-ir-antioquia><Icon name="globe-hemisphere-west" />Antioquia</button>
-          <span class="miga-zona" data-miga-zona hidden></span>
-        </nav>
-        <button class="icon-btn rail-toggle" type="button" data-rail-toggle aria-expanded="true" aria-label="Mostrar u ocultar la lista">
-          <Icon name="list" />
-        </button>
-      </div>
-
-      <div class="buscar">
-        <label class="sr" for="buscar-lote">Buscar lote por nombre o municipio</label>
-        <Icon name="magnifying-glass" />
-        <input id="buscar-lote" type="search" placeholder="Buscar lote" autocomplete="off" data-buscar />
-        <button class="filtros-btn" type="button" data-filtros-toggle aria-expanded="false" aria-controls="filtros">
-          <Icon name="sliders-horizontal" /><span>Filtros</span><span class="n" data-filtros-n hidden></span>
-        </button>
-      </div>
-
-      <div class="filtros" id="filtros" data-filtros hidden>
-        <label>
-          <span>Municipio</span>
-          <select data-f-municipio>
-            <option value="">Todos</option>
-            {municipios.map((m) => <option value={m}>{m}</option>)}
-          </select>
-        </label>
-        <label>
-          <span>Área mínima</span>
-          <select data-f-area>
-            <option value="">Cualquiera</option>
-            <option value="2000">2.000 m²</option>
-            <option value="3000">3.000 m²</option>
-            <option value="5000">5.000 m²</option>
-          </select>
-        </label>
-        <label>
-          <span>Precio máximo</span>
-          <select data-f-precio>
-            <option value="">Cualquiera</option>
-            <option value="250000000">$250 M</option>
-            <option value="300000000">$300 M</option>
-            <option value="400000000">$400 M</option>
-          </select>
-        </label>
-        <label class="check">
-          <input type="checkbox" data-f-recorrido />
-          <span>Solo con recorrido en video</span>
-        </label>
-      </div>
-
-      <p class="conteo" data-conteo aria-live="polite">{conteoTxt(lotes.length, unidadesDe(lotes))}</p>
-
-      <div class="lista" data-lista>
-        {
-          zonas.map((z) => (
-            <section class="grupo" data-grupo={z.id}>
-              <button type="button" class="grupo-titulo" data-ir-zona={z.id}>
-                {z.nombre}
-                <span data-grupo-n>{conteoTxt(lotes.filter((l) => l.zona.id === z.id).length, unidadesDe(lotes.filter((l) => l.zona.id === z.id)))}</span>
-              </button>
-              <ul>
-                {lotes
-                  .filter((l) => l.zona.id === z.id)
-                  .map((l) => (
-                    <li data-item={l.id}>
-                      <button type="button" class="item" data-abrir={l.id}>
-                        {l.d.portada ? (
-                          <Image src={l.d.portada} alt="" widths={[112, 224]} sizes="56px" class="thumb" />
-                        ) : (
-                          <span class="thumb vacio">
-                            <Icon name="mountains" />
-                          </span>
-                        )}
-                        <span class="item-txt">
-                          <strong>{l.corto}</strong>
-                          <span>{l.d.demo ? `${l.d.municipio}, demo` : l.d.municipio}</span>
-                        </span>
-                        <span class="item-num">
-                          <strong>{textoPrecioCorto(l.d)}</strong>
-                          <span>{textoArea(l.d)}</span>
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-              </ul>
-            </section>
-          ))
-        }
-        <div class="vacio-lista" data-vacio hidden>
-          <p>Ningún lote cumple esos filtros</p>
-          <button class="btn btn-ghost btn-sm" type="button" data-limpiar>Limpiar filtros</button>
-        </div>
-      </div>
-    </aside>
-
-    <aside class="ficha" data-ficha aria-label="Ficha del lote" hidden>
-      {
-        lotes.map((l) => (
-          <article data-ficha-lote={l.id} hidden aria-labelledby={`ficha-${l.id}`}>
-            <button class="icon-btn cerrar" type="button" data-volver aria-label="Volver al mapa">
-              <Icon name="x" />
-            </button>
-            <div class="foto">
-              {l.d.portada ? (
-                <Image src={l.d.portada} alt={l.d.galeria[0]?.alt ?? l.d.nombre} widths={[400, 760]} sizes="(max-width: 767px) 100vw, 384px" />
-              ) : (
-                <div class="foto-vacia">
-                  <Icon name="image" />
-                  <span>Lote de demostración, sin fotos</span>
-                </div>
-              )}
-            </div>
-            <div class="cuerpo">
-              <p class="lugar">
-                <Icon name="map-pin" />
-                {[l.d.vereda, l.d.municipio].filter(Boolean).join(', ')}
-              </p>
-              <h2 id={`ficha-${l.id}`}>{l.corto}</h2>
-              <p class="tagline">{l.d.tagline}</p>
-
-              <div class="precio">
-                <strong>{textoPrecio(l.d)}</strong>
-                <span>{textoPrecioDetalle(l.d)}</span>
-              </div>
-
-              <dl class="cifras">
-                <div>
-                  <dt>{l.d.area_max_m2 ? 'Por lote' : 'Área'}</dt>
-                  <dd>{textoArea(l.d)}</dd>
-                </div>
-                {l.d.explanacion_m2 && (
-                  <div>
-                    <dt>Explanación</dt>
-                    <dd>{formatArea(l.d.explanacion_m2)}</dd>
-                  </div>
-                )}
-                <div>
-                  <dt>Estado</dt>
-                  <dd class:list={['estado', l.d.estado]}>{l.d.estado[0].toUpperCase() + l.d.estado.slice(1)}</dd>
-                </div>
-              </dl>
-
-              {l.d.atributos.length > 0 && (
-                <ul class="atributos">
-                  {l.d.atributos.slice(0, 4).map((a) => (
-                    <li>{a}</li>
-                  ))}
-                </ul>
-              )}
-
-              {l.d.demo && <p class="nota">Lote de demostración con datos de ejemplo</p>}
-              {l.d.coordenadas?.aproximadas && !l.d.demo && <p class="nota">Lindero y ubicación aproximados</p>}
-
-              <div class="ficha-acciones">
-                {l.whatsapp && (
-                  <a class="btn btn-primary" href={l.whatsapp} target="_blank" rel="noopener">
-                    <Icon name="whatsapp" />
-                    Agendar visita
-                  </a>
-                )}
-                <div class="fila">
-                  {l.video && (
-                    <button class="btn btn-ghost btn-sm" type="button" data-recorrido={l.video.src} data-poster={l.video.poster}>
-                      <Icon name="play-fill" />
-                      Recorrido
-                    </button>
-                  )}
-                  <a class="btn btn-ghost btn-sm" href={url(`lotes/${l.id}/`)}>
-                    Ficha completa
-                  </a>
-                  {l.ruta && (
-                    <a class="btn btn-ghost btn-sm" href={l.ruta} target="_blank" rel="noopener">
-                      <Icon name="navigation-arrow" />
-                      Cómo llegar
-                    </a>
-                  )}
-                </div>
-                <div class="fila">
-                  <button class="btn btn-ghost btn-sm" type="button" data-orbitar aria-pressed="false">
-                    <Icon name="arrows-clockwise" />
-                    <span data-orbitar-txt>Girar alrededor</span>
-                  </button>
-                  <button class="btn btn-ghost btn-sm" type="button" data-volver>
-                    <Icon name="arrow-left" />
-                    Volver al mapa
-                  </button>
-                </div>
-              </div>
-            </div>
-          </article>
-        ))
-      }
-      {
-        config.dibujo && (
-          <div class="dibujo" data-dibujo data-estado="listo">
-            <strong>Lindero (solo en tu computador)</strong>
-            <span data-dibujo-info />
-            <p class="ayuda">Clic en cada esquina del lote, en orden. Puedes girar y acercar mientras dibujas</p>
-            <div class="fila">
-              <button class="btn btn-ghost btn-sm" type="button" data-dibujo-accion="iniciar">
-                Dibujar lindero
-              </button>
-              <button class="btn btn-primary btn-sm solo-dibujo" type="button" data-dibujo-accion="guardar">
-                Guardar
-              </button>
-              <button class="btn btn-ghost btn-sm solo-dibujo" type="button" data-dibujo-accion="deshacer">
-                Deshacer
-              </button>
-              <button class="btn btn-ghost btn-sm solo-dibujo" type="button" data-dibujo-accion="borrar">
-                Borrar
-              </button>
-              <button class="btn btn-ghost btn-sm solo-dibujo" type="button" data-dibujo-accion="cancelar">
-                Cancelar
-              </button>
-            </div>
+    {destinos.filter((d) => d.video).map((d) => (
+      <>
+        <section class="panel" data-panel="lote" data-de={d.id}>
+          <p class="sobre">{d.lugar} · lote de demostración</p>
+          <h2>{d.nombre}</h2>
+          <ul class="cifras">
+            {d.cifras.map((c) => <li><strong>{c.valor}</strong><span>{c.etiqueta}</span></li>)}
+          </ul>
+          {d.cercanias && <p class="cercanias">{d.cercanias.join(' · ')}</p>}
+          <div class="acciones">
+            <button type="button" class="principal" data-accion="lindero">Ver lindero y medidas</button>
+            <button type="button" class="secundario" data-accion="compartir">Compartir</button>
           </div>
-        )
-      }
-    </aside>
+          <div class="enlaces">
+            <button type="button" class="enlace" data-accion="repetir">Repetir el video</button>
+            <button type="button" class="enlace" data-accion="planeta">Volver al planeta</button>
+          </div>
+          <p class="credito">Video: {d.video!.credito}. Es un lugar real, no un lote en venta</p>
+        </section>
 
-    <dialog class="video" data-video aria-label="Recorrido del lote">
-      <button class="icon-btn" type="button" data-video-cerrar aria-label="Cerrar el recorrido"><Icon name="x" /></button>
-      <video controls playsinline preload="none" data-video-el></video>
+        {d.lindero && (
+          <section class="panel tarjeta" data-panel="lindero" data-de={d.id}>
+            <p class="sobre">Lindero y medidas</p>
+            <h2>{d.nombre}</h2>
+            <ul class="cifras">
+              <li><strong>{miles(d.areaOficial ?? Math.round(area(d.lindero) / 50) * 50)} m²</strong><span>{d.areaOficial ? 'Área catastral' : 'Área'}</span></li>
+              <li><strong>{miles(Math.round(perimetro(d.lindero)))} m</strong><span>Perímetro</span></li>
+              <li><strong>{d.lindero.length}</strong><span>Lados medidos</span></li>
+            </ul>
+            <p class="nota">{d.linderoFuente ? `Lindero oficial: ${d.linderoFuente}` : 'Lindero ilustrativo, trazado sobre la imagen aérea'}. En un lote propio se dibuja con el plano o el levantamiento topográfico</p>
+            <div class="acciones">
+              <button type="button" class="principal" data-accion="video">Volver al video</button>
+              <button type="button" class="secundario" data-accion="planeta">Volver al planeta</button>
+            </div>
+          </section>
+        )}
+      </>
+    ))}
+
+    {/* Lotes que todavía no tienen vuelo de dron */}
+    {destinos.filter((d) => !d.video).map((d) => (
+      <section class="panel tarjeta" data-panel="satelite" data-de={d.id}>
+        <p class="sobre">{d.lugar} · ubicación aproximada</p>
+        <h2>{d.nombre}</h2>
+        <ul class="cifras">
+          {d.cifras.map((c) => <li><strong>{c.valor}</strong><span>{c.etiqueta}</span></li>)}
+        </ul>
+        <div class="aviso">
+          <strong>Aquí entra la toma de dron</strong>
+          <p>Hoy este recorrido llega hasta la imagen satelital. Con un vuelo de dron sobre el lote termina en video, con el lindero y las medidas, como en la demostración</p>
+        </div>
+        <div class="acciones">
+          <button type="button" class="principal" data-accion="demo">Ver la demostración</button>
+          <button type="button" class="secundario" data-accion="planeta">Volver al planeta</button>
+        </div>
+      </section>
+    ))}
+
+    <dialog id="acerca">
+      <form method="dialog"><button class="cerrar" aria-label="Cerrar">×</button></form>
+      <p class="sobre">Sobre esta demostración</p>
+      <h2>Cómo se hace</h2>
+      <ol>
+        <li><strong>El planeta es en vivo</strong>Es un globo con imagen satelital que se puede girar y acercar, no un video grabado</li>
+        <li><strong>La llegada es al sitio real</strong>El globo baja hasta el mismo terreno que grabó el dron, con el mismo ángulo</li>
+        <li><strong>El final es una toma de dron</strong>El mapa se coloca en el punto de vista exacto del dron y el video entra pegado al terreno, sin corte</li>
+        <li><strong>El lindero está medido</strong>Al terminar el video se ve el lote desde arriba, con área, perímetro y el largo de cada lado</li>
+      </ol>
+      <h3>Qué hace falta para un lote propio</h3>
+      <ul>
+        <li>Un vuelo de dron sobre el lote: una pasada desde arriba y dos o tres tomas bajando hacia él</li>
+        <li>El lindero: plano, levantamiento o archivo de la aplicación de medición</li>
+        <li>Los datos de la ficha: área, precio, servicios y cercanías</li>
+      </ul>
     </dialog>
-  </div>
 
-  <script type="application/json" id="globo-config" set:html={configJson} />
-</Base>
+    <script>
+      import '../scripts/recorrido';
+    </script>
+  </body>
+</html>
 
-<script>
-  import { iniciarGlobo } from '../lib/globo';
-  iniciarGlobo();
-</script>
+<style is:global>
+  /*
+    Móvil primero: los estilos base son los del celular en vertical, donde el planeta ocupa la parte
+    alta de la pantalla y el texto queda compacto abajo. La disposición ancha (texto a la izquierda,
+    planeta a la derecha) se agrega al final con una sola consulta de medios. El recorrido usa la
+    misma condición para ubicar el globo: si cambia aquí, cambia también en recorrido.ts (ANCHA).
+  */
+  :root {
+    --oro: #f3d48a; --tinta: #f2f4f1; --tenue: #c9d2cb;
+    --borde: 18px;
+    --arriba: calc(14px + env(safe-area-inset-top, 0px));
+    --abajo: calc(18px + env(safe-area-inset-bottom, 0px));
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; overflow: hidden; overscroll-behavior: none; -webkit-text-size-adjust: 100%;
+    color: var(--tinta); font-family: -apple-system, "SF Pro Display", Inter, system-ui, sans-serif;
+    background:
+      radial-gradient(1px 1px at 12% 22%, #fff9, transparent 60%),
+      radial-gradient(1px 1px at 38% 71%, #fff7, transparent 60%),
+      radial-gradient(1.5px 1.5px at 67% 14%, #fffa, transparent 60%),
+      radial-gradient(1px 1px at 83% 58%, #fff6, transparent 60%),
+      radial-gradient(1px 1px at 54% 43%, #fff5, transparent 60%),
+      radial-gradient(1.5px 1.5px at 24% 88%, #fff8, transparent 60%),
+      #05070a;
+    background-size: 420px 420px, 360px 360px, 510px 510px, 300px 300px, 460px 460px, 390px 390px, auto;
+  }
+  p, h1, h2, h3, ul, ol { margin: 0; padding: 0; }
+  ul, ol { list-style: none; }
 
-<style>
-  /* Capas propias de la página: globo 0, degradado 1, lista y ficha 20, llegada 25 (nav global 30) */
-  :global(body:has([data-globo])) {
-    overflow: hidden;
-  }
-  :global(body:has([data-globo]) .site-footer) {
-    display: none;
-  }
-  .globo {
-    position: fixed;
-    inset: 0;
-    background: var(--bg);
-  }
-  .lienzo {
-    position: absolute;
-    inset: 0;
-  }
-  .lienzo :global(gmp-map-3d) {
-    width: 100%;
-    height: 100%;
-  }
-  .sr {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
+  /* --- Capas de imagen --- */
+  #halo, #mapa, #dron { position: fixed; inset: 0; width: 100%; height: 100%; }
+  #mapa, #dron { will-change: transform, filter, opacity; }
+  #mapa .maplibregl-canvas { outline: none; }
+  body:is([data-etapa="vuelo"], [data-etapa="lote"]) #mapa { pointer-events: none; }
 
-  /* Llegada: texto abajo a la izquierda, el planeta gira detrás. Se deja libre la franja de atribución de Google */
-  .llegada {
-    position: absolute;
-    left: var(--gutter);
-    bottom: 96px;
-    z-index: 25;
-    max-width: 720px;
-    display: grid;
-    gap: 18px;
-    transition: opacity 0.6s var(--ease), transform 0.6s var(--ease), visibility 0.6s;
+  /* Resplandor azul que rodea el globo y lo separa del fondo. --gx, --gy y --gr los pone el recorrido */
+  #halo {
+    pointer-events: none; opacity: 0; transition: opacity 1.4s ease;
+    background: radial-gradient(circle at var(--gx, 50%) var(--gy, 34%),
+      #8dbbff40 0, #6a9fff2e calc(var(--gr, 170px) * 1.05), #4f86ff14 calc(var(--gr, 170px) * 1.28), transparent calc(var(--gr, 170px) * 1.75));
   }
-  .llegada h1 {
-    font-size: clamp(2.1rem, 4.2vw, 3.35rem);
-    line-height: 1.04;
-    letter-spacing: -0.045em;
-    padding-bottom: 2px;
-  }
-  .llegada h1 span {
-    display: block;
-    color: rgb(244 245 243 / 0.55);
-  }
-  .llegada > p {
-    font-size: 1.125rem;
-    color: rgb(244 245 243 / 0.8);
-    max-width: 44ch;
-  }
-  .llegada .acciones {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-top: 6px;
-  }
-  .llegada [hidden],
-  .fondo[hidden] {
-    display: none;
-  }
-  .fondo {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  .llegada .respaldo-aviso {
-    font-size: 0.9375rem;
-    color: var(--muted);
-  }
-  [data-vista]:not([data-vista='llegada']) .llegada {
-    opacity: 0;
-    visibility: hidden;
-    transform: translateY(16px);
-    pointer-events: none;
-  }
-  .globo::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    pointer-events: none;
-    background: linear-gradient(90deg, rgb(11 12 13 / 0.72) 0%, rgb(11 12 13 / 0) 58%);
-    transition: opacity 0.8s var(--ease);
-  }
-  [data-vista]:not([data-vista='llegada'])::before {
-    opacity: 0;
-  }
-  /* Velo superior: la marca y el menú se leen sobre cualquier imagen */
-  .globo::after {
-    content: '';
-    position: absolute;
-    inset: 0 0 auto;
-    height: 120px;
-    z-index: 1;
-    pointer-events: none;
-    background: linear-gradient(180deg, rgb(11 12 13 / 0.6) 0%, rgb(11 12 13 / 0) 100%);
-  }
+  body[data-etapa="espacio"] #halo { opacity: 1; }
 
-  /* Títulos del vuelo al lote: centrados abajo, como en el video; la lista y la ficha esperan a que termine */
-  .etapa {
-    position: absolute;
-    left: 50%;
-    bottom: 104px;
-    z-index: 22;
-    display: grid;
-    justify-items: center;
-    gap: 6px;
-    width: min(92vw, 820px);
-    text-align: center;
-    pointer-events: none;
-    opacity: 0;
-    transform: translate(-50%, 10px);
-    transition: opacity 0.5s var(--ease), transform 0.6s var(--ease);
-    text-shadow: 0 2px 28px rgb(0 0 0 / 0.55);
+  /* La opacidad, la deformación y el recorte del video los lleva el recorrido cuadro a cuadro:
+     mientras la cámara del mapa entra o sale de la toma, el video va pegado al terreno en perspectiva */
+  #dron { object-fit: cover; pointer-events: none; opacity: 0; transform-origin: 0 0; --m0: 70%; --m1: 100%; --b: 12%; }
+  /* Recorte del video mientras no llena la pantalla: se abre desde el lote hacia afuera (óvalo)
+     y los cuatro bordes del cuadro se difuminan para que no se vea un rectángulo sobre el mapa */
+  #dron.recortado {
+    --recorte:
+      radial-gradient(ellipse 71% 71% at 50% 52%, #000 var(--m0), transparent var(--m1)),
+      linear-gradient(to right, transparent 0, #000 var(--b), #000 calc(100% - var(--b)), transparent 100%),
+      linear-gradient(to bottom, transparent 0, #000 var(--b), #000 calc(100% - var(--b)), transparent 100%);
+    -webkit-mask-image: var(--recorte); mask-image: var(--recorte);
+    -webkit-mask-composite: source-in; mask-composite: intersect;
   }
-  .etapa.visible {
-    opacity: 1;
-    transform: translate(-50%, 0);
+  body[data-video="no"] #dron, body[data-video="si"] #mapa { visibility: hidden; }
+
+  /* Viñeta y degradado para leer el texto sobre la imagen */
+  body::after {
+    content: ""; position: fixed; inset: 0; z-index: 1; pointer-events: none;
+    background: radial-gradient(ellipse at 50% 45%, transparent 55%, #0006 100%);
   }
-  .etapa strong {
-    font-size: clamp(2rem, 4.4vw, 3.5rem);
-    font-weight: 600;
-    line-height: 1.05;
-    letter-spacing: -0.04em;
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: 0; transition: opacity 1.4s ease;
+    background: linear-gradient(to top, #000d 0%, #0008 34%, transparent 66%);
   }
-  .etapa span {
-    font-size: clamp(0.9375rem, 1.4vw, 1.125rem);
-    color: rgb(244 245 243 / 0.75);
+  body[data-etapa="lote"]::before { opacity: 1; transition-delay: .2s; }
+
+  /* --- Marcadores sobre el mapa --- */
+  .pin {
+    width: 14px; height: 14px; padding: 0; border: 2px solid #05070a; border-radius: 50%; background: var(--oro);
+    box-shadow: 0 0 0 4px #f3d48a40; cursor: pointer; transition: background .2s;
   }
-  [data-cine] .rail,
-  [data-cine] .ficha {
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
+  .pin::before { content: ""; position: absolute; inset: -15px; border-radius: 50%; } /* zona de toque de 44 px */
+  .pin:hover { background: #fff; }
+  .pin span {
+    position: absolute; left: 22px; top: 50%; translate: 0 -50%; white-space: nowrap; font-size: .76rem; font-weight: 600;
+    color: var(--tinta); text-shadow: 0 1px 10px #000, 0 0 3px #000; opacity: 0; transition: opacity .3s;
+  }
+  .pin.elegido span, .pin:hover span { opacity: 1; }
+  .pin.elegido::after, .zona::after {
+    content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid var(--oro); animation: pulso 2.2s ease-out infinite;
+  }
+  @keyframes pulso { from { transform: scale(.6); opacity: 1; } to { transform: scale(2.6); opacity: 0; } }
+  body:not([data-etapa="espacio"]) .pin { visibility: hidden; }
+
+  .zona { width: 84px; height: 84px; border-radius: 50%; border: 2px solid var(--oro); background: #f3d48a1f; pointer-events: none; visibility: hidden; }
+  .zona::after { inset: 0; }
+  body[data-etapa="satelite"] .zona { visibility: visible; }
+
+  .medida { pointer-events: none; }
+  .medida i {
+    display: block; padding: 3px 8px; border-radius: 999px; background: #0b0f0cd9; color: var(--oro); font-style: normal; font-size: .72rem;
+    font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; opacity: 0; transition: opacity .3s ease;
+  }
+  /* Las medidas aparecen cuando la cámara ya está llegando a la vista desde arriba */
+  body[data-etapa="lindero"] .medida i { opacity: 1; transition: opacity .6s ease 1.5s; }
+
+  /* --- Barra superior --- */
+  .barra {
+    position: fixed; z-index: 3; left: var(--borde); right: var(--borde); top: var(--arriba);
+    display: flex; align-items: center; justify-content: space-between; pointer-events: none;
+  }
+  .barra > * { pointer-events: auto; }
+  .barra img { display: block; width: 56px; height: auto; filter: drop-shadow(0 1px 8px #0008); }
+  body[data-etapa="vuelo"] .barra .enlace { opacity: 0; pointer-events: none; }
+
+  /* --- Relato del descenso --- */
+  .hud {
+    position: fixed; z-index: 3; left: 50%; top: calc(var(--arriba) + 46px); translate: -50% 0; width: max-content; max-width: 90vw; text-align: center;
+    opacity: 0; transition: opacity .6s ease; pointer-events: none; text-shadow: 0 1px 14px #000b;
+  }
+  body[data-etapa="vuelo"] .hud { opacity: 1; }
+  .hud strong { display: block; font-size: 1.15rem; font-weight: 600; letter-spacing: -.02em; }
+  .hud span { display: block; margin-top: 3px; font-size: .64rem; letter-spacing: .1em; text-transform: uppercase; color: var(--tenue); }
+  .hud b { font-weight: 600; color: var(--oro); font-variant-numeric: tabular-nums; }
+  .saltar { position: fixed; z-index: 3; right: var(--borde); bottom: var(--abajo); opacity: 0; pointer-events: none; }
+  body[data-etapa="vuelo"] .saltar { opacity: 1; pointer-events: auto; transition: opacity .6s ease 1.2s; }
+  /* Durante la entrada al video no se muestra el relato del vuelo */
+  body.zambullida .hud, body.zambullida .saltar { opacity: 0; pointer-events: none; transition: opacity .4s ease; }
+
+  /* --- Paneles --- */
+  .panel {
+    position: fixed; z-index: 3; left: var(--borde); right: var(--borde); bottom: var(--abajo);
+    opacity: 0; transform: translateY(14px); pointer-events: none; transition: opacity .6s ease, transform .6s ease;
+  }
+  .panel.visible { opacity: 1; transform: none; pointer-events: auto; transition-delay: .5s; }
+  .panel[data-panel="lote"].visible { transition-delay: .3s; }
+  .panel[data-panel="lindero"].visible { transition-delay: 1.1s; }
+  .tarjeta {
+    padding: 18px 18px 16px; border-radius: 20px; background: #0b0f0cc7; border: 1px solid #ffffff1f;
+    backdrop-filter: blur(22px) saturate(1.3);
   }
 
-  /* Botones en píldora sobre el globo: Omitir (durante el vuelo) y Lista (tablet, con la ficha abierta) */
-  .pildora {
-    position: absolute;
-    z-index: 26;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    height: 40px;
-    padding: 0 16px;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    background: rgb(17 19 20 / 0.84);
-    backdrop-filter: blur(22px) saturate(160%);
-    -webkit-backdrop-filter: blur(22px) saturate(160%);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 12px 32px rgb(0 0 0 / 0.35);
-    color: var(--text);
-    font: inherit;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: opacity 0.4s var(--ease), transform 0.4s var(--ease), visibility 0.4s, background 0.2s;
+  .sobre { margin-bottom: 7px; font-size: .62rem; letter-spacing: .1em; text-transform: uppercase; color: var(--oro); }
+  h1, h2 { font-weight: 600; letter-spacing: -.03em; line-height: 1.1; text-shadow: 0 2px 24px #0009; }
+  h1 { font-size: clamp(1.35rem, 6.2vw, 1.65rem); text-wrap: balance; }
+  h2 { font-size: 1.35rem; }
+  .tarjeta h2 { font-size: 1.25rem; text-shadow: none; }
+  .bajada { margin: 7px 0 13px; max-width: 30em; font-size: .84rem; line-height: 1.45; color: var(--tenue); }
+
+  .destinos { display: grid; gap: 6px; margin: 12px 0; }
+  .destinos button {
+    display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 6px 12px; text-align: left; color: var(--tinta);
+    background: #ffffff14; border: 1px solid transparent; border-radius: 12px; backdrop-filter: blur(14px);
   }
-  .pildora:hover {
-    background: rgb(36 38 40 / 0.92);
+  .destinos button:hover { background: #ffffff1f; transform: none; }
+  .destinos button[aria-pressed="true"] { background: #f3d48a1f; border-color: #f3d48a8c; }
+  .destinos .punto { flex: none; width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--tenue); }
+  .destinos button[aria-pressed="true"] .punto { background: var(--oro); border-color: var(--oro); }
+  .destinos .textos { flex: 1; min-width: 0; display: grid; }
+  .destinos strong { font-size: .86rem; font-weight: 600; line-height: 1.2; }
+  .destinos .textos span { font-size: .7rem; font-weight: 400; line-height: 1.3; color: var(--tenue); }
+  .destinos em { flex: none; font-style: normal; font-size: .62rem; font-weight: 500; color: var(--tenue); }
+  .destinos button[aria-pressed="true"] em { color: var(--oro); }
+  .portada .principal { width: 100%; }
+
+  .cifras { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 12px 0; }
+  .cifras strong { display: block; font-size: 1.02rem; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .cifras span { font-size: .68rem; color: var(--tenue); }
+  .cercanias { margin: -2px 0 14px; font-size: .76rem; color: var(--tenue); }
+  .nota { margin-bottom: 14px; font-size: .78rem; line-height: 1.45; color: var(--tenue); }
+  .aviso { margin-bottom: 14px; padding: 11px 13px; border-radius: 12px; background: #f3d48a1a; border: 1px solid #f3d48a55; }
+  .aviso strong { display: block; margin-bottom: 3px; font-size: .84rem; color: var(--oro); }
+  .aviso p { font-size: .78rem; line-height: 1.45; color: var(--tinta); }
+  .acciones { display: flex; flex-wrap: wrap; gap: 8px; }
+  .acciones .principal { flex: 1 1 auto; }
+  .enlaces { display: flex; gap: 18px; margin-top: 11px; }
+  .credito { margin-top: 10px; font-size: .62rem; line-height: 1.45; color: #ffffff8c; }
+
+  /* --- Botones --- */
+  button { font: inherit; font-weight: 600; border: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform .2s, background .2s, opacity .3s; }
+  button:focus-visible { outline: 2px solid var(--oro); outline-offset: 3px; }
+  .principal, .secundario { min-height: 44px; font-size: .88rem; border-radius: 999px; padding: 11px 18px; }
+  .principal { color: #0b0f0c; background: var(--tinta); }
+  .principal:hover { transform: translateY(-1px); background: #fff; }
+  .secundario { color: var(--tinta); background: #ffffff24; backdrop-filter: blur(12px); }
+  .secundario:hover { background: #ffffff3a; }
+  .enlace { padding: 6px 0; font-size: .78rem; font-weight: 500; color: var(--tinta); background: none; text-decoration: underline; text-decoration-color: #ffffff66; text-underline-offset: 4px; text-shadow: 0 1px 10px #000a; }
+  .enlace:hover { text-decoration-color: var(--oro); }
+  body[data-sin-mapa] [data-accion="lindero"] { display: none; }
+
+  /* --- Cómo se hace --- */
+  dialog {
+    width: min(560px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 24px 20px 20px; color: var(--tinta);
+    background: #0d120ef2; border: 1px solid #ffffff24; border-radius: 22px; backdrop-filter: blur(24px);
   }
-  .pildora:active {
-    transform: translateY(1px);
+  dialog::backdrop { background: #000a; }
+  dialog h2 { font-size: 1.4rem; text-shadow: none; margin-bottom: 16px; }
+  dialog h3 { margin: 20px 0 10px; font-size: .95rem; font-weight: 600; }
+  dialog ol { display: grid; gap: 12px; counter-reset: paso; }
+  dialog ol li { position: relative; padding-left: 36px; font-size: .84rem; line-height: 1.5; color: var(--tenue); counter-increment: paso; }
+  dialog ol li::before {
+    content: counter(paso); position: absolute; left: 0; top: 1px; width: 24px; height: 24px; display: grid; place-items: center;
+    border-radius: 50%; background: #f3d48a26; color: var(--oro); font-size: .76rem; font-weight: 600;
   }
-  .pildora:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
+  dialog ol strong { display: block; color: var(--tinta); font-weight: 600; }
+  dialog ul { display: grid; gap: 8px; }
+  dialog ul li { padding-left: 18px; position: relative; font-size: .84rem; line-height: 1.5; color: var(--tenue); }
+  dialog ul li::before { content: ""; position: absolute; left: 2px; top: .62em; width: 6px; height: 6px; border-radius: 50%; background: var(--oro); }
+  .cerrar { position: absolute; right: 12px; top: 12px; width: 36px; height: 36px; border-radius: 50%; font-size: 1.4rem; line-height: 1; color: var(--tinta); background: #ffffff1a; }
+  .cerrar:hover { background: #ffffff33; }
+
+  /* Celulares bajitos: el planeta manda, así que el texto de apoyo se retira */
+  @media (max-height: 700px) {
+    .bajada { display: none; }
+    .destinos { margin-top: 10px; }
   }
-  .omitir {
-    left: 50%;
-    bottom: 52px;
-    translate: -50% 0;
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-  }
-  [data-cine] .omitir {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-  }
-  .lista-btn {
-    display: none;
-  }
-  @media (prefers-reduced-transparency: reduce) {
-    .pildora {
-      background: var(--bg-2);
-      backdrop-filter: none;
-      -webkit-backdrop-filter: none;
-    }
+  @media (max-height: 590px) {
+    .portada .sobre { display: none; }
+    /* Los lotes pasan a una fila que se desliza con el dedo */
+    .destinos { grid-auto-flow: column; grid-auto-columns: 74%; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+    .destinos::-webkit-scrollbar { display: none; }
+    .destinos li { scroll-snap-align: start; }
   }
 
-  /* Superficie flotante compartida por la lista y la ficha */
-  .rail,
-  .ficha {
-    position: absolute;
-    z-index: 20;
-    top: calc(var(--nav-h) + 8px);
-    background: rgb(17 19 20 / 0.84);
-    backdrop-filter: blur(22px) saturate(160%);
-    -webkit-backdrop-filter: blur(22px) saturate(160%);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 24px 60px rgb(0 0 0 / 0.35);
-    transition: opacity 0.5s var(--ease), transform 0.5s var(--ease), visibility 0.5s;
-  }
-  @media (prefers-reduced-transparency: reduce) {
-    .rail,
-    .ficha {
-      background: var(--bg-2);
-      backdrop-filter: none;
-      -webkit-backdrop-filter: none;
-    }
-  }
+  /* --- Disposición ancha: computador, tableta y celular acostado --- */
+  @media (min-width: 821px), (min-width: 560px) and (min-aspect-ratio: 4/3) {
+    :root { --borde: clamp(22px, 4vw, 48px); --arriba: clamp(14px, 4vh, 36px); --abajo: clamp(16px, 6vh, 64px); }
+    .barra img { width: clamp(58px, 6vw, 76px); }
+    .hud { top: var(--arriba); }
+    .hud strong { font-size: clamp(1.2rem, 2.2vw, 1.7rem); }
+    .hud span { margin-top: 4px; font-size: .72rem; }
+    .pin span { font-size: .8rem; }
+    .zona { width: 96px; height: 96px; }
+    .medida i { padding: 4px 9px; font-size: .78rem; }
 
-  /* Lista: a la izquierda, termina antes del logo de Google */
-  .rail {
-    left: 16px;
-    bottom: 64px;
-    width: 340px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding: 14px;
-  }
-  [data-vista='llegada'] .rail {
-    opacity: 0;
-    visibility: hidden;
-    transform: translateX(-16px);
-  }
-  .rail-top {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .migas {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-    flex: 1;
-    font-size: 0.875rem;
-  }
-  .miga {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    min-height: 36px;
-    padding: 0 12px;
-    border: 0;
-    border-radius: 999px;
-    background: rgb(255 255 255 / 0.08);
-    color: var(--text);
-    font: inherit;
-    cursor: pointer;
-  }
-  .miga:hover {
-    background: rgb(255 255 255 / 0.14);
-  }
-  .miga-zona {
-    color: var(--muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .miga-zona::before {
-    content: '/';
-    margin-right: 6px;
-    color: rgb(255 255 255 / 0.3);
-  }
-  .rail-toggle {
-    display: none;
-    width: 40px;
-    height: 40px;
-  }
+    .panel { right: auto; width: min(540px, 46vw); }
+    .tarjeta { width: min(440px, 46vw); padding: clamp(18px, 2.4vw, 26px); border-radius: 22px; }
+    .sobre { margin-bottom: clamp(7px, 1.4vh, 12px); font-size: .72rem; letter-spacing: .09em; }
+    h1, h2 { letter-spacing: -.035em; line-height: 1.05; }
+    h1 { font-size: clamp(1.7rem, 4vw, 3.3rem); }
+    h2 { font-size: clamp(1.4rem, 2.8vw, 2.3rem); }
+    .tarjeta h2 { font-size: clamp(1.25rem, 2vw, 1.7rem); }
+    .bajada { margin: clamp(8px, 1.6vh, 14px) 0 clamp(12px, 2.6vh, 22px); font-size: clamp(.88rem, 1.3vw, 1.02rem); line-height: 1.5; }
 
-  .buscar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    height: 46px;
-    padding: 0 5px 0 14px;
-    border-radius: 999px;
-    background: rgb(255 255 255 / 0.07);
-    border: 1px solid transparent;
-    color: var(--muted);
-  }
-  .buscar:focus-within {
-    border-color: rgb(183 143 84 / 0.6);
-  }
-  .buscar input {
-    flex: 1;
-    min-width: 0;
-    height: 100%;
-    border: 0;
-    background: transparent;
-    color: var(--text);
-    font: inherit;
-    font-size: 0.9375rem;
-    outline: none;
-  }
-  .buscar input::placeholder {
-    color: #8d938f;
-  }
-  .filtros-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    height: 36px;
-    padding: 0 12px;
-    border: 0;
-    border-radius: 999px;
-    background: rgb(255 255 255 / 0.08);
-    color: var(--text);
-    font: inherit;
-    font-size: 0.8125rem;
-    cursor: pointer;
-  }
-  .filtros-btn[aria-expanded='true'] {
-    background: rgb(255 255 255 / 0.16);
-  }
-  .filtros-btn .n {
-    min-width: 18px;
-    height: 18px;
-    padding: 0 5px;
-    border-radius: 999px;
-    background: var(--accent);
-    color: var(--accent-ink);
-    font-size: 0.6875rem;
-    font-weight: 600;
-    line-height: 18px;
-    text-align: center;
-  }
-  .filtros {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-  }
-  .filtros[hidden] {
-    display: none;
-  }
-  .filtros label {
-    display: grid;
-    gap: 4px;
-    font-size: 0.75rem;
-    color: var(--muted);
-  }
-  .filtros label:first-child {
-    grid-column: 1 / -1;
-  }
-  .filtros select {
-    height: 40px;
-    padding: 0 10px;
-    border-radius: 12px;
-    border: 1px solid var(--line);
-    background: var(--bg-2);
-    color: var(--text);
-    font: inherit;
-    font-size: 0.875rem;
-  }
-  .filtros .check {
-    grid-column: 1 / -1;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-height: 36px;
-    color: var(--text);
-    font-size: 0.875rem;
-  }
-  .filtros .check input {
-    width: 18px;
-    height: 18px;
-    accent-color: var(--accent);
-  }
+    .destinos { margin: 0 0 clamp(12px, 2.6vh, 22px); }
+    .destinos button { gap: 12px; padding: 9px 14px; border-radius: 14px; }
+    .destinos .punto { width: 10px; height: 10px; }
+    .destinos strong { font-size: .95rem; }
+    .destinos .textos span { font-size: .78rem; }
+    .destinos em { font-size: .7rem; }
+    .portada .principal { width: auto; }
 
-  .conteo {
-    font-size: 0.8125rem;
-    color: var(--muted);
-    padding: 0 4px;
-  }
-  .lista {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    margin: 0 -6px;
-    padding: 0 6px;
-    scrollbar-width: thin;
-  }
-  .grupo + .grupo {
-    margin-top: 14px;
-  }
-  .grupo[hidden],
-  .grupo li[hidden] {
-    display: none;
-  }
-  .grupo-titulo {
-    display: flex;
-    justify-content: space-between;
-    width: 100%;
-    padding: 6px 4px;
-    border: 0;
-    background: none;
-    color: var(--text);
-    font: inherit;
-    font-size: 0.9375rem;
-    font-weight: 600;
-    text-align: left;
-    cursor: pointer;
-  }
-  .grupo-titulo span {
-    color: var(--muted);
-    font-weight: 400;
-    font-size: 0.8125rem;
-  }
-  .grupo-titulo:hover {
-    color: var(--accent);
-  }
-  .grupo ul {
-    list-style: none;
-    margin: 2px 0 0;
-    padding: 0;
-    display: grid;
-    gap: 2px;
-  }
-  .item {
-    display: grid;
-    grid-template-columns: 56px 1fr auto;
-    align-items: center;
-    gap: 12px;
-    width: 100%;
-    padding: 8px;
-    border: 0;
-    border-radius: 14px;
-    background: transparent;
-    color: var(--text);
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-  .item:hover,
-  .item[aria-current='true'] {
-    background: rgb(255 255 255 / 0.07);
-  }
-  .item[aria-current='true'] {
-    box-shadow: inset 0 0 0 1px rgb(183 143 84 / 0.55);
-  }
-  .thumb {
-    width: 56px;
-    height: 56px;
-    border-radius: 12px;
-    object-fit: cover;
-  }
-  .thumb.vacio {
-    display: grid;
-    place-items: center;
-    background: var(--card);
-    color: rgb(183 143 84 / 0.6);
-    font-size: 1.25rem;
-  }
-  .item-txt,
-  .item-num {
-    display: grid;
-    gap: 2px;
-    min-width: 0;
-  }
-  .item-txt strong,
-  .item-num strong {
-    font-size: 0.9375rem;
-    font-weight: 600;
-  }
-  .item-txt strong {
-    line-height: 1.25;
-    text-wrap: balance;
-  }
-  .item-txt span,
-  .item-num span {
-    font-size: 0.8125rem;
-    color: var(--muted);
-  }
-  .item-num {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-  .vacio-lista {
-    display: grid;
-    justify-items: start;
-    gap: 12px;
-    padding: 18px 4px;
-    color: var(--muted);
-  }
-  .vacio-lista[hidden] {
-    display: none;
-  }
+    .cifras { gap: 12px clamp(18px, 3vw, 36px); margin: clamp(12px, 2.4vh, 20px) 0; }
+    .cifras strong { font-size: 1.2rem; }
+    .cifras span { font-size: .76rem; }
+    .cercanias { margin: -4px 0 clamp(14px, 2.6vh, 22px); font-size: .86rem; }
+    .nota, .aviso { margin-bottom: clamp(14px, 2.4vh, 20px); }
+    .nota, .aviso p { font-size: .84rem; line-height: 1.5; }
+    .aviso { padding: 14px 16px; border-radius: 14px; }
+    .aviso strong { font-size: .92rem; }
+    .acciones { gap: 10px; }
+    .acciones .principal { flex: none; }
+    .enlaces { gap: 20px; margin-top: clamp(10px, 2vh, 16px); }
+    .enlace { padding: 4px 0; font-size: .84rem; }
+    .credito { margin-top: clamp(8px, 2vh, 16px); font-size: .7rem; line-height: 1.5; }
+    .principal, .secundario { font-size: .95rem; padding: 12px 24px; }
 
-  /* Ficha: a la derecha, deja libres la brújula y los controles de Google abajo a la derecha */
-  .ficha {
-    right: 16px;
-    width: 384px;
-    max-height: calc(100dvh - var(--nav-h) - 128px);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    scrollbar-width: thin;
-  }
-  .ficha[hidden] {
-    display: block;
-    opacity: 0;
-    visibility: hidden;
-    transform: translateX(16px);
-    pointer-events: none;
-  }
-  .ficha article {
-    position: relative;
-  }
-  .ficha article[hidden] {
-    display: none;
-  }
-  .cerrar {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    z-index: 1;
-    width: 40px;
-    height: 40px;
-    background: rgb(11 12 13 / 0.55);
-  }
-  .foto {
-    aspect-ratio: 16 / 9;
-    overflow: hidden;
-    border-radius: var(--radius) var(--radius) 0 0;
-    background: var(--card);
-  }
-  .foto img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  .foto-vacia {
-    height: 100%;
-    display: grid;
-    place-content: center;
-    justify-items: center;
-    gap: 8px;
-    color: var(--muted);
-    font-size: 0.875rem;
-  }
-  .foto-vacia :global(.icon) {
-    width: 28px;
-    height: 28px;
-    color: rgb(183 143 84 / 0.6);
-  }
-  .cuerpo {
-    display: grid;
-    gap: 14px;
-    padding: 18px 20px 20px;
-  }
-  .lugar {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.8125rem;
-    color: var(--muted);
-  }
-  .cuerpo h2 {
-    font-size: 1.75rem;
-    line-height: 1.08;
-    margin-top: -6px;
-  }
-  .tagline {
-    color: rgb(244 245 243 / 0.8);
-    font-size: 0.9375rem;
-    margin-top: -6px;
-  }
-  .precio {
-    display: flex;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: 4px 12px;
-  }
-  .precio strong {
-    font-size: 1.5rem;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-    font-variant-numeric: tabular-nums;
-  }
-  .precio span {
-    font-size: 0.8125rem;
-    color: var(--muted);
-  }
-  .cifras {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
-    gap: 1px;
-    margin: 0;
-    border-radius: 14px;
-    overflow: hidden;
-    background: var(--line);
-  }
-  .cifras div {
-    padding: 10px 12px;
-    background: rgb(17 19 20 / 0.96);
-  }
-  .cifras dt {
-    font-size: 0.75rem;
-    color: var(--muted);
-  }
-  .cifras dd {
-    margin: 2px 0 0;
-    white-space: nowrap;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-  }
-  .estado.disponible {
-    color: var(--accent);
-  }
-  .estado.reservado {
-    color: var(--muted);
-  }
-  .atributos {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  .atributos li {
-    padding: 6px 12px;
-    border-radius: 999px;
-    background: rgb(255 255 255 / 0.07);
-    font-size: 0.8125rem;
-  }
-  .nota {
-    font-size: 0.8125rem;
-    color: var(--muted);
-  }
-  .ficha-acciones {
-    display: grid;
-    gap: 8px;
-    margin-top: 4px;
-  }
-  .fila {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  .ficha-acciones .fila .btn {
-    flex: 1 1 auto;
-  }
-  [data-orbitar][aria-pressed='true'] {
-    background: rgb(183 143 84 / 0.18);
-    color: var(--accent);
-  }
+    dialog { padding: 30px 30px 26px; border-radius: 24px; }
+    dialog h2 { font-size: 1.8rem; margin-bottom: 20px; }
+    dialog h3 { margin: 24px 0 12px; font-size: 1rem; }
+    dialog ol { gap: 14px; }
+    dialog ol li, dialog ul li { font-size: .9rem; }
+    .cerrar { right: 16px; top: 14px; }
 
-  .dibujo {
-    display: grid;
-    gap: 8px;
-    margin: 0 20px 20px;
-    padding-top: 14px;
-    border-top: 1px solid var(--line);
-    font-size: 0.875rem;
+    /* En la disposición ancha no hace falta la fila deslizable */
+    .destinos { grid-auto-flow: row; grid-auto-columns: auto; overflow: visible; }
+    .portada .sobre { display: block; }
   }
-  .dibujo .ayuda,
-  .dibujo .solo-dibujo {
-    display: none;
+  /* Ancha con buena altura: vuelve el texto de apoyo que los celulares bajitos retiran */
+  @media (min-width: 560px) and (min-aspect-ratio: 4/3) and (min-height: 521px), (min-width: 821px) and (min-height: 521px) {
+    .bajada { display: block; }
   }
-  .dibujo[data-estado='dibujando'] .ayuda {
-    display: block;
-  }
-  .dibujo[data-estado='dibujando'] .solo-dibujo {
-    display: inline-flex;
-  }
-  .dibujo[data-estado='dibujando'] [data-dibujo-accion='iniciar'] {
-    display: none;
-  }
-  .dibujo .ayuda {
-    color: var(--muted);
-  }
-
-  .video {
-    width: min(1100px, 94vw);
-    padding: 0;
-    border: 0;
-    border-radius: var(--radius);
-    background: #050505;
-    overflow: hidden;
-  }
-  .video::backdrop {
-    background: rgb(11 12 13 / 0.86);
-  }
-  .video video {
-    width: 100%;
-    aspect-ratio: 16 / 9;
-  }
-  .video .icon-btn {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    z-index: 1;
-  }
-
-  /* Tablet: superficies más angostas y un solo panel a la vez (con un lote abierto, la ficha reemplaza a la lista) */
-  @media (max-width: 1100px) {
-    .rail {
-      width: 300px;
-    }
-    .ficha {
-      width: 340px;
-    }
-    [data-vista='lote'] .rail {
-      opacity: 0;
-      visibility: hidden;
-      pointer-events: none;
-      transform: translateX(-16px);
-    }
-  }
-  /* El botón Lista vive a la izquierda de la ficha, lejos de la brújula y la atribución de Google */
-  @media (min-width: 768px) and (max-width: 1100px) {
-    [data-vista='lote']:not([data-cine]) .lista-btn {
-      display: inline-flex;
-      top: calc(var(--nav-h) + 8px);
-      right: 368px;
-    }
-  }
-  /* Pantallas bajas o medianas: la ficha prioriza precio y acciones */
-  @media (max-width: 1100px), (max-height: 820px) {
-    .ficha .atributos {
-      display: none;
-    }
-  }
-
-  /* Celular: la lista y la ficha son hojas inferiores, por encima de la franja de atribución de Google */
-  @media (max-width: 767px) {
-    .llegada {
-      left: 16px;
-      right: 16px;
-      bottom: 72px;
-    }
-    .llegada > p {
-      font-size: 1rem;
-    }
-    .globo::before {
-      background: linear-gradient(0deg, rgb(11 12 13 / 0.82) 0%, rgb(11 12 13 / 0) 62%);
-    }
-    .rail,
-    .ficha {
-      top: auto;
-      left: 8px;
-      right: 8px;
-      bottom: 40px;
-      width: auto;
-    }
-    .rail {
-      max-height: 46dvh;
-    }
-    .rail[data-plegado] > :not(.rail-top) {
-      display: none;
-    }
-    .rail-toggle {
-      display: grid;
-    }
-    [data-vista='llegada'] .rail,
-    .ficha[hidden] {
-      transform: translateY(24px);
-    }
-    /* En celular la ficha es corta: el 3D es la imagen y el lote queda visible encima */
-    .ficha {
-      max-height: 52dvh;
-    }
-    .ficha .foto,
-    .ficha .tagline,
-    .ficha .atributos {
-      display: none;
-    }
-    .ficha .cuerpo {
-      padding-top: 16px;
-    }
-    .ficha .lugar,
-    .ficha .cuerpo h2 {
-      padding-right: 48px;
-    }
+  /* Ancha pero muy baja (celular acostado): todo se compacta para no subir hasta el logo */
+  @media (min-width: 560px) and (min-aspect-ratio: 4/3) and (max-height: 520px), (min-width: 821px) and (max-height: 520px) {
+    .portada .sobre { display: none; }
+    h1 { font-size: 1.4rem; }
+    h2 { font-size: 1.25rem; }
+    .destinos { margin: 10px 0; }
+    .destinos button { min-height: 40px; padding: 4px 12px; }
+    .destinos strong { font-size: .86rem; }
+    .destinos .textos span { font-size: .7rem; }
+    .cifras { margin: 8px 0; }
+    .credito { display: none; }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .etapa,
-    .llegada,
-    .rail,
-    .ficha,
-    .globo::before {
-      transition: none;
-    }
+    .pin.elegido::after, .zona::after { animation: none; }
   }
 </style>

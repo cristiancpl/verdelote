@@ -1,53 +1,16 @@
 // @ts-check
-import { writeFile } from 'node:fs/promises';
 import { defineConfig } from 'astro/config';
 
-// GitHub Pages sirve el sitio bajo /verdelote; Cloudflare Pages (CF_PAGES=1) lo sirve en la raíz de su dominio.
-// SITE_URL y BASE_PATH permiten fijar otro dominio o ruta sin tocar el código
+// Cloudflare Pages (CF_PAGES=1) sirve el sitio en la raíz de su dominio; GitHub Pages, bajo /verdelote.
+// SITE_URL y BASE_PATH permiten fijar otro dominio o ruta sin tocar el código.
 const enCloudflare = process.env.CF_PAGES === '1';
 const BASE = process.env.BASE_PATH ?? (enCloudflare ? '/' : '/verdelote');
 const SITE = process.env.SITE_URL ?? (enCloudflare ? process.env.CF_PAGES_URL : undefined) ?? 'https://cristiancpl.github.io';
 
-/**
- * Solo en `astro dev`: recibe el lindero dibujado en /globo/ y lo guarda en public/capas/lindero-<slug>.geojson
- * @returns {import('vite').Plugin}
- */
-const guardarLindero = () => ({
-  name: 'verdelote-guardar-lindero',
-  apply: 'serve',
-  configureServer(server) {
-    // Astro quita el base antes de los middlewares: se acepta con o sin /verdelote
-    server.middlewares.use((req, res, next) => {
-      if (!/^(\/verdelote)?\/__lindero(\?|$)/.test(req.url ?? '')) return next();
-      if (req.method !== 'POST') {
-        res.statusCode = 405;
-        return res.end();
-      }
-      let cuerpo = '';
-      req.on('data', (parte) => (cuerpo += parte));
-      req.on('end', async () => {
-        try {
-          const geo = JSON.parse(cuerpo);
-          const feature = geo.features?.[0];
-          const slug = feature?.properties?.slug;
-          const anillo = feature?.geometry?.coordinates?.[0];
-          if (!/^[a-z0-9-]+$/.test(slug ?? '') || !Array.isArray(anillo) || anillo.length < 4) throw new Error('Lindero inválido');
-          const ruta = new URL(`./public/capas/lindero-${slug}.geojson`, import.meta.url);
-          await writeFile(ruta, JSON.stringify(geo, null, 2) + '\n', 'utf-8');
-          res.setHeader('content-type', 'application/json');
-          res.end(JSON.stringify({ ok: true }));
-        } catch (e) {
-          res.statusCode = 400;
-          res.end(String(e));
-        }
-      });
-    });
-  },
-});
-
-// https://astro.build/config
 export default defineConfig({
   site: SITE,
   base: BASE,
-  vite: { plugins: [guardarLindero()] },
+  output: 'static',
+  server: { port: 4321 },
+  devToolbar: { enabled: false },
 });
