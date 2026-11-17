@@ -316,13 +316,14 @@ function actualizarHalo() {
 }
 
 /**
- * Qué versión de la toma cargar. Celular y computador reciben la misma; si la persona pidió
- * ahorrar datos o la conexión es lenta, va la liviana para que no se trabe.
+ * Qué versión de la toma cargar. Celular y computador reciben la de 1080p; si la persona pidió
+ * ahorrar datos, va la liviana.
  */
 function archivoDeVideo(v: NonNullable<Destino['video']>) {
-  const red = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string; downlink?: number } }).connection;
-  const lenta = !!red && (!!red.saveData || /^(slow-2g|2g|3g)$/.test(red.effectiveType ?? '') || (red.downlink ?? 99) < 5);
-  return lenta ? v.archivoLiviano ?? v.archivo : v.archivo;
+  // Solo cuando la persona activó el ahorro de datos. La velocidad que estima el navegador del
+  // celular suele quedar baja aunque la red sea buena, y mandaba la versión de 720p sin necesidad.
+  const red = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+  return red?.saveData ? v.archivoLiviano ?? v.archivo : v.archivo;
 }
 
 // --- Elegir lote ---

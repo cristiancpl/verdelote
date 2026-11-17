@@ -41,7 +41,7 @@ export type Destino = {
   /** Nombre que se muestra durante el descenso mientras el zoom sea menor que "hasta". */
   escalas: { hasta: number; nombre: string }[];
   /**
-   * archivoLiviano: la misma toma en menor resolución, para quien ahorra datos o tiene conexión lenta.
+   * archivoLiviano: la misma toma en menor resolución, para quien activó el ahorro de datos.
    * linderoA: segundo de la toma en el que el recorrido sigue solo hacia el lindero y las medidas
    * la primera vez que se llega al lote. Sin este dato espera al final del video.
    */
